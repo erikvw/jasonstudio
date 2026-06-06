@@ -1,0 +1,16 @@
+<div class="selection-overlay">
+    <button class="btn btn-sm {% if selection_type == 'print' and selected %}btn-warning{% else %}btn-outline-light{% endif %}"
+            hx-post="{% url 'toggle_selection' photo.pk %}"
+            hx-vals='{"selection_type": "print"}'
+            hx-target="closest .selection-overlay"
+            hx-swap="outerHTML">
+        Print
+    </button>
+    <button class="btn btn-sm {% if selection_type == 'digital' and selected %}btn-info{% else %}btn-outline-light{% endif %}"
+            hx-post="{% url 'toggle_selection' photo.pk %}"
+            hx-vals='{"selection_type": "digital"}'
+            hx-target="closest .selection-overlay"
+            hx-swap="outerHTML">
+        Digital
+    </button>
+</div>

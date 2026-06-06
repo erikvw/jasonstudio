@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="text-center py-5">
+    <h1>Jason Studio</h1>
+    <p class="lead text-muted">Professional photography, delivered beautifully.</p>
+    {% if not user.is_authenticated %}
+    <a href="{% url 'login' %}" class="btn btn-primary btn-lg me-2">Login</a>
+    <a href="{% url 'signup' %}" class="btn btn-outline-secondary btn-lg">Sign Up</a>
+    {% endif %}
+</div>
+{% endblock %}

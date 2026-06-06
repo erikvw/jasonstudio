@@ -1,0 +1,40 @@
+{% for photo in photos %}
+<div class="col-md-4 col-sm-6 mb-4">
+    <div class="card photo-card">
+        {% if photo.watermarked %}
+            <img src="{{ photo.watermarked.url }}" alt="{{ photo.title }}" class="card-img-top">
+        {% else %}
+            <img src="{{ photo.original.url }}" alt="{{ photo.title }}" class="card-img-top">
+        {% endif %}
+        {% if not is_photographer %}
+        <div class="selection-overlay">
+            {% with photo_selections=selections|default:"" %}
+            <button class="btn btn-sm {% if photo.pk|slugify in selections and 'print' in selections|default:'' %}btn-warning{% else %}btn-outline-light{% endif %}"
+                    hx-post="{% url 'toggle_selection' photo.pk %}"
+                    hx-vals='{"selection_type": "print"}'
+                    hx-target="closest .selection-overlay"
+                    hx-swap="outerHTML">
+                Print
+            </button>
+            <button class="btn btn-sm {% if photo.pk|slugify in selections and 'digital' in selections|default:'' %}btn-info{% else %}btn-outline-light{% endif %}"
+                    hx-post="{% url 'toggle_selection' photo.pk %}"
+                    hx-vals='{"selection_type": "digital"}'
+                    hx-target="closest .selection-overlay"
+                    hx-swap="outerHTML">
+                Digital
+            </button>
+            {% endwith %}
+        </div>
+        {% endif %}
+        {% if photo.title %}
+        <div class="card-body p-2">
+            <small class="text-muted">{{ photo.title }}</small>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% empty %}
+<div class="col-12">
+    <p class="text-muted">No photos yet.</p>
+</div>
+{% endfor %}

@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}My Selections — Jason Studio{% endblock %}
+{% block content %}
+<h2>My Selections</h2>
+
+<h4 class="mt-4">Print</h4>
+{% if print_selections %}
+<div class="row">
+    {% for sel in print_selections %}
+    <div class="col-md-3 col-sm-4 mb-3">
+        <div class="card">
+            {% if sel.photo.watermarked %}
+            <img src="{{ sel.photo.watermarked.url }}" class="card-img-top" style="height:180px;object-fit:cover;">
+            {% else %}
+            <img src="{{ sel.photo.original.url }}" class="card-img-top" style="height:180px;object-fit:cover;">
+            {% endif %}
+            <div class="card-body p-2">
+                <small class="text-muted">{{ sel.photo.event.name }}</small>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<p class="text-muted">No print selections yet.</p>
+{% endif %}
+
+<h4 class="mt-4">Digital Library</h4>
+{% if digital_selections %}
+<div class="row">
+    {% for sel in digital_selections %}
+    <div class="col-md-3 col-sm-4 mb-3">
+        <div class="card">
+            {% if sel.photo.watermarked %}
+            <img src="{{ sel.photo.watermarked.url }}" class="card-img-top" style="height:180px;object-fit:cover;">
+            {% else %}
+            <img src="{{ sel.photo.original.url }}" class="card-img-top" style="height:180px;object-fit:cover;">
+            {% endif %}
+            <div class="card-body p-2">
+                <small class="text-muted">{{ sel.photo.event.name }}</small>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<p class="text-muted">No digital selections yet.</p>
+{% endif %}
+{% endblock %}
