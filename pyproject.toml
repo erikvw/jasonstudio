@@ -40,6 +40,6 @@ requires = ["uv_build>=0.7.19,<0.8"]
 build-backend = "uv_build"
 
 [tool.pytest.ini_options]
-DJANGO_SETTINGS_MODULE = "jasonstudio.settings"
+DJANGO_SETTINGS_MODULE = "jasonstudio.settings.debug"
 pythonpath = ["src"]
 testpaths = ["tests"]

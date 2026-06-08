@@ -8,7 +8,7 @@ from pathlib import Path
 
 def main():
     """Run administrative tasks."""
-    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "jasonstudio.settings")
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "jasonstudio.settings.debug")
 
     # Add src/ to the path so Django can find the apps
     sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
