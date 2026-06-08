@@ -2,6 +2,7 @@ from .base import *  # noqa: F401, F403
 from .base import BASE_DIR, env
 
 SECRET_KEY = env("DJANGO_SECRET_KEY")
+SALT_KEY = env("DJANGO_SALT_KEY")
 
 DEBUG = False
 
