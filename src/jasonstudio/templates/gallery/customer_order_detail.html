@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+{% block title %}Order: {{ customer.user.get_full_name|default:customer.user.username }} — {{ event.name }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+    <div>
+        <h2 class="mb-1">{{ customer.user.get_full_name|default:customer.user.username }}</h2>
+        <p class="text-muted mb-0">{{ event.name }} — {{ event.date }}</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <a href="{% url 'photographer_invoice' event.pk customer.pk %}" class="btn btn-outline-dark btn-sm">
+            <i class="fa-solid fa-file-invoice"></i> Invoice
+        </a>
+        <a href="{% url 'event_orders' event.pk %}" class="btn btn-outline-secondary btn-sm">Back to Orders</a>
+    </div>
+</div>
+
+<!-- Order Status -->
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div>
+                <strong>Status:</strong>
+                {% if order.status == "pending_payment" %}
+                <span class="badge bg-warning text-dark">Pending Payment</span>
+                {% elif order.status == "paid" %}
+                <span class="badge bg-success">Paid</span>
+                {% elif order.status == "in_progress" %}
+                <span class="badge bg-primary">In Progress</span>
+                {% elif order.status == "delivered" %}
+                <span class="badge bg-dark">Delivered</span>
+                {% endif %}
+            </div>
+            <form method="post" action="{% url 'update_order_status' event.pk customer.pk %}" class="d-flex gap-2">
+                {% csrf_token %}
+                <select name="status" class="form-select form-select-sm" style="width:auto;">
+                    <option value="pending_payment" {% if order.status == "pending_payment" %}selected{% endif %}>Pending Payment</option>
+                    <option value="paid" {% if order.status == "paid" %}selected{% endif %}>Paid</option>
+                    <option value="in_progress" {% if order.status == "in_progress" %}selected{% endif %}>In Progress</option>
+                    <option value="delivered" {% if order.status == "delivered" %}selected{% endif %}>Delivered</option>
+                </select>
+                <button type="submit" class="btn btn-sm btn-primary">Update</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Photographer Fee -->
+<div class="card mb-4">
+    <div class="card-header"><strong>Photographer Fee</strong></div>
+    <div class="card-body">
+        <form method="post" action="{% url 'update_order_status' event.pk customer.pk %}">
+            {% csrf_token %}
+            <input type="hidden" name="status" value="{{ order.status }}">
+            <input type="hidden" name="update_fee" value="1">
+            <div class="row g-2 align-items-end">
+                <div class="col-6 col-sm-auto">
+                    <label class="form-label mb-0 small">Hours</label>
+                    <input type="number" name="photographer_hours" value="{{ order.photographer_hours }}"
+                           step="0.25" min="0" class="form-control form-control-sm">
+                </div>
+                <div class="col-6 col-sm-auto">
+                    <label class="form-label mb-0 small">Rate ($/hr)</label>
+                    <input type="number" name="photographer_rate" value="{{ order.photographer_rate }}"
+                           step="0.01" min="0" class="form-control form-control-sm">
+                </div>
+                <div class="col-6 col-sm-auto">
+                    <label class="form-label mb-0 small">Deposit ($)</label>
+                    <input type="number" name="deposit_amount" value="{{ order.deposit_amount }}"
+                           step="0.01" min="0" class="form-control form-control-sm">
+                </div>
+                <div class="col-6 col-sm-auto">
+                    <button type="submit" class="btn btn-sm btn-primary w-100">Save</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Download Section -->
+<div class="card mb-4">
+    <div class="card-header"><strong>Downloads</strong></div>
+    <div class="card-body">
+        {% if order.is_paid %}
+        <div class="d-flex flex-wrap gap-2">
+            {% if print_photos %}
+            <a href="{% url 'download_zip' event.pk customer.pk 'print' %}"
+               class="btn btn-outline-success btn-sm">
+                <i class="fa-solid fa-download"></i> Print Originals ({{ print_photos|length }})
+            </a>
+            {% endif %}
+            {% if digital_photos or print_photos %}
+            <a href="{% url 'download_zip' event.pk customer.pk 'digital' %}"
+               class="btn btn-outline-info btn-sm">
+                <i class="fa-solid fa-download"></i> Digital Delivery ({{ digital_delivery_count }})
+            </a>
+            {% endif %}
+        </div>
+        {% else %}
+        <p class="text-muted mb-0">
+            <i class="fa-solid fa-lock"></i> Downloads available after payment is confirmed.
+        </p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Share Link -->
+{% if order.share_link %}
+<div class="card mb-4">
+    <div class="card-header"><strong>Share Link</strong></div>
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div>
+                <span class="font-monospace fs-5">{{ order.share_link.code }}</span>
+                {% if order.share_link.is_active %}
+                <span class="badge bg-success ms-2">Active</span>
+                {% else %}
+                <span class="badge bg-secondary ms-2">Deactivated</span>
+                {% endif %}
+                <span class="text-muted ms-3">Downloads: {{ order.share_link.download_count }}</span>
+            </div>
+            {% if order.share_link.is_active %}
+            <form method="post" action="{% url 'deactivate_share_link' event.pk %}">
+                {% csrf_token %}
+                <input type="hidden" name="customer_id" value="{{ customer.pk }}">
+                <button type="submit" class="btn btn-sm btn-outline-danger">Deactivate</button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Print & Digital Selections -->
+{% load gallery_tags %}
+{% if print_photos %}
+<h4 class="mt-4">Print & Digital <span class="badge bg-success">{{ print_photos|length }}</span></h4>
+<div class="row">
+    {% for photo in print_photos %}
+    <div class="col-6 col-sm-4 col-md-3 mb-3">
+        <div class="card">
+            {% if photo.thumbnail %}
+            <img src="{{ photo.thumbnail.url }}" class="card-img-top" style="height:150px;object-fit:cover;">
+            {% else %}
+            <img src="{{ photo.original.url }}" class="card-img-top" style="height:150px;object-fit:cover;">
+            {% endif %}
+            <div class="card-body p-2">
+                <small class="text-muted text-truncate d-block">{{ photo.filename }}</small>
+                <span class="badge bg-outline-dark border">{{ print_sizes_by_photo|dict_get:photo.pk }}</span>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- Digital Only Selections -->
+{% if digital_photos %}
+<h4 class="mt-4">Digital Only <span class="badge bg-info">{{ digital_photos|length }}</span></h4>
+<div class="row">
+    {% for photo in digital_photos %}
+    <div class="col-6 col-sm-4 col-md-3 mb-3">
+        <div class="card">
+            {% if photo.thumbnail %}
+            <img src="{{ photo.thumbnail.url }}" class="card-img-top" style="height:150px;object-fit:cover;">
+            {% else %}
+            <img src="{{ photo.original.url }}" class="card-img-top" style="height:150px;object-fit:cover;">
+            {% endif %}
+            <div class="card-body p-2">
+                <small class="text-muted text-truncate d-block">{{ photo.filename }}</small>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+{% if rejected_count %}
+<p class="text-muted mt-3">{{ rejected_count }} photo{{ rejected_count|pluralize }} rejected.</p>
+{% endif %}
+{% endblock %}

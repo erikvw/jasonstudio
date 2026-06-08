@@ -1,0 +1,26 @@
+<div class="photo-caption" id="caption-{{ photo.pk }}">
+    {% if is_photographer %}
+        {% if photo.caption %}
+            <p class="mb-1 small cursor-pointer"
+               onclick="this.parentElement.querySelector('.caption-form').style.display='block'; this.style.display='none';"
+               title="Click to edit">{{ photo.caption }}</p>
+        {% else %}
+            <a href="#" class="small text-muted"
+               onclick="event.preventDefault(); this.parentElement.querySelector('.caption-form').style.display='block'; this.style.display='none';">
+                + Add caption</a>
+        {% endif %}
+        <div class="caption-form" style="display:{% if not photo.caption %}none{% else %}none{% endif %}">
+            <form hx-post="{% url 'update_caption' photo.pk %}"
+                  hx-target="#caption-{{ photo.pk }}"
+                  hx-swap="outerHTML">
+                <input type="text" name="caption" value="{{ photo.caption }}"
+                       class="form-control form-control-sm mb-1" placeholder="Enter caption...">
+                <button type="submit" class="btn btn-sm btn-outline-primary">Save</button>
+            </form>
+        </div>
+    {% else %}
+        {% if photo.caption %}
+            <p class="mb-1 small">{{ photo.caption }}</p>
+        {% endif %}
+    {% endif %}
+</div>

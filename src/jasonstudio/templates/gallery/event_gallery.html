@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}{{ event.name }} — Jason Studio{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+    <div>
+        <h2 class="mb-1">{{ event.name }}</h2>
+        <p class="text-muted mb-0">{{ event.date }} — {{ event.location }}</p>
+    </div>
+    {% if is_photographer %}
+    <div class="d-flex gap-2 flex-wrap">
+        <a href="{% url 'event_orders' event.pk %}" class="btn btn-outline-success btn-sm">Orders</a>
+        <a href="{% url 'upload_photos' event.pk %}" class="btn btn-primary btn-sm">Upload</a>
+    </div>
+    {% endif %}
+</div>
+{% if event.description %}
+<p>{{ event.description }}</p>
+{% endif %}
+{% if is_customer %}
+{% include "gallery/partials/selection_summary.html" %}
+{% include "gallery/partials/filter_tabs.html" %}
+{% endif %}
+<div id="photo-grid" class="row">
+    {% include "gallery/partials/photo_grid.html" %}
+</div>
+{% endblock %}

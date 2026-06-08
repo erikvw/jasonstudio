@@ -1,0 +1,58 @@
+{% load gallery_tags %}
+{% for photo in photos %}
+<div class="col-md-4 col-sm-6 mb-4">
+    <div class="card photo-card">
+        {% if photo.thumbnail %}
+            <img src="{{ photo.thumbnail.url }}?v={{ photo.modified|date:'U' }}" alt="{{ photo.title }}" class="card-img-top photo-thumb"
+                 data-full="{{ photo.watermarked.url }}?v={{ photo.modified|date:'U' }}" role="button">
+        {% elif photo.watermarked %}
+            <img src="{{ photo.watermarked.url }}?v={{ photo.modified|date:'U' }}" alt="{{ photo.title }}" class="card-img-top photo-thumb"
+                 data-full="{{ photo.watermarked.url }}?v={{ photo.modified|date:'U' }}" role="button">
+        {% else %}
+            <img src="{{ photo.original.url }}" alt="{{ photo.title }}" class="card-img-top">
+        {% endif %}
+        {% if is_photographer %}
+        <button class="btn btn-sm btn-danger delete-btn"
+                hx-post="{% url 'delete_photo' photo.pk %}"
+                hx-target="#photo-grid"
+                hx-swap="innerHTML"
+                hx-confirm="Delete this photo?">
+            &times;
+        </button>
+        {% endif %}
+        <div class="card-body p-2">
+            {% include "gallery/partials/photo_caption.html" with photo=photo is_photographer=is_photographer %}
+            <small class="text-muted">
+                {{ photo.filename }}
+                {% if photo.image_width and photo.image_height %}
+                    &middot; {{ photo.image_width }}&times;{{ photo.image_height }}
+                {% endif %}
+                {% if photo.file_size %}
+                    &middot; {{ photo.file_size|filesizeformat }}
+                {% endif %}
+            </small>
+            {% if photo.camera_model or photo.date_taken or photo.aperture %}
+            <br>
+            <small class="text-muted">
+                {% if photo.camera_model %}{{ photo.camera_model }}{% endif %}
+                {% if photo.focal_length %}&middot; {{ photo.focal_length }}{% endif %}
+                {% if photo.aperture %}&middot; {{ photo.aperture }}{% endif %}
+                {% if photo.shutter_speed %}&middot; {{ photo.shutter_speed }}{% endif %}
+                {% if photo.iso %}&middot; ISO {{ photo.iso }}{% endif %}
+            </small>
+            {% endif %}
+            {% if photo.date_taken %}
+            <br>
+            <small class="text-muted">Taken {{ photo.date_taken|date:"N j, Y g:i A" }}</small>
+            {% endif %}
+        </div>
+        {% if not is_photographer %}
+        {% include "gallery/partials/selection_buttons.html" with photo=photo current_choice=selections|dict_get:photo.pk current_print_size=print_sizes_map|dict_get:photo.pk print_sizes=print_sizes %}
+        {% endif %}
+    </div>
+</div>
+{% empty %}
+<div class="col-12">
+    <p class="text-muted">No photos yet.</p>
+</div>
+{% endfor %}

@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% load tz %}
+{% block title %}Invoice {{ invoice.invoice_number }} — {{ event.name }} — Jason Studio{% endblock %}
+{% block extra_head %}
+<style>
+    @media print {
+        .navbar, .no-print { display: none !important; }
+        .card { border: none !important; box-shadow: none !important; }
+    }
+    .stamp-paid, .stamp-unpaid {
+        position: absolute; top: 20px; right: 20px;
+        border: 3px solid; font-size: 1.2rem; font-weight: bold;
+        padding: 4px 12px; transform: rotate(12deg); opacity: 0.6;
+    }
+    .stamp-paid { border-color: #28a745; color: #28a745; }
+    .stamp-unpaid { border-color: #dc3545; color: #dc3545; }
+    @media (min-width: 576px) {
+        .stamp-paid, .stamp-unpaid {
+            top: 40px; right: 40px; border-width: 4px;
+            font-size: 2rem; padding: 5px 20px;
+        }
+    }
+</style>
+{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 no-print flex-wrap gap-2">
+    {% if is_photographer_view %}
+    <a href="{% url 'customer_order_detail' event.pk customer.pk %}" class="btn btn-outline-secondary">Back to Order</a>
+    {% else %}
+    <a href="{% url 'my_selections' %}" class="btn btn-outline-secondary">Back to Selections</a>
+    {% endif %}
+    <button class="btn btn-outline-dark" onclick="window.print()"><i class="fa-solid fa-print"></i> Print</button>
+</div>
+
+<div class="card position-relative">
+    {% if order %}
+    {% if order.is_paid %}
+    <div class="stamp-paid">PAID</div>
+    {% else %}
+    <div class="stamp-unpaid">UNPAID</div>
+    {% endif %}
+    {% endif %}
+
+    <div class="card-body">
+        <!-- Header -->
+        <div class="row mb-4">
+            <div class="col-sm-6">
+                <h3>{% if photographer %}{{ photographer.business_name|default:"Jason Studio" }}{% else %}Jason Studio{% endif %}</h3>
+                <p class="text-muted mb-0">Photography Services</p>
+                {% if photographer.address %}
+                <p class="small mb-0" style="white-space:pre-line;">{{ photographer.address }}</p>
+                {% endif %}
+                {% if photographer.phone %}
+                <p class="small mb-0">{{ photographer.phone }}</p>
+                {% endif %}
+                {% if photographer.email %}
+                <p class="small mb-0">{{ photographer.email }}</p>
+                {% endif %}
+            </div>
+            <div class="col-sm-6 text-end">
+                <h4>Invoice</h4>
+                {% if order %}
+                <p class="mb-0"><strong>Invoice #:</strong> {{ invoice.invoice_number }}</p>
+                <p class="mb-0"><strong>Order #:</strong> {{ order.ref }}</p>
+                {% endif %}
+                <p class="mb-1"><strong>Date Issued:</strong> {% if invoice.issued_at %}{{ invoice.issued_at|date:"N j, Y" }}{% else %}{% now "N j, Y" %}{% endif %}</p>
+                {% if photographer.payment_terms %}
+                <p class="mb-0"><strong>Terms:</strong> {{ photographer.payment_terms }}</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <hr>
+
+        <!-- Bill To / Event -->
+        <div class="row mb-4">
+            <div class="col-sm-6">
+                <strong>Bill To:</strong><br>
+                {{ customer.user.get_full_name|default:customer.user.username }}<br>
+                {% if customer.user.email %}{{ customer.user.email }}<br>{% endif %}
+                {% if customer.phone %}{{ customer.phone }}{% endif %}
+            </div>
+            <div class="col-sm-6 text-end">
+                <strong>Event:</strong><br>
+                {{ event.name }}<br>
+                {{ event.date }}
+            </div>
+        </div>
+
+        <!-- Line Items -->
+        <div class="table-responsive">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Description</th>
+                    <th>File</th>
+                    <th class="text-end">Qty</th>
+                    <th class="text-end">Unit Cost</th>
+                    <th class="text-end">Price</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in line_items %}
+                <tr>
+                    <td>{{ forloop.counter }}</td>
+                    <td>{{ item.description }}</td>
+                    <td><small class="text-muted">{{ item.filename }}</small></td>
+                    <td class="text-end">{{ item.qty }}</td>
+                    <td class="text-end">${{ item.unit_cost|floatformat:2 }}</td>
+                    <td class="text-end">${{ item.price|floatformat:2 }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr>
+                    <td colspan="5" class="text-end">Subtotal</td>
+                    <td class="text-end">${{ invoice.subtotal|floatformat:2 }}</td>
+                </tr>
+                {% if invoice.deposit and invoice.deposit != 0 %}
+                <tr>
+                    <td colspan="5" class="text-end">Deposit</td>
+                    <td class="text-end">-${{ invoice.deposit|floatformat:2 }}</td>
+                </tr>
+                {% endif %}
+                {% if invoice.tax_rate and invoice.tax_rate != 0 %}
+                <tr>
+                    <td colspan="5" class="text-end">Tax ({{ invoice.tax_rate|floatformat:2 }}%)</td>
+                    <td class="text-end">${{ invoice.tax_amount|floatformat:2 }}</td>
+                </tr>
+                {% endif %}
+                <tr>
+                    <td colspan="5" class="text-end"><strong>Amount Due</strong></td>
+                    <td class="text-end"><strong>${{ invoice.amount_due|floatformat:2 }}</strong></td>
+                </tr>
+            </tfoot>
+        </table>
+        </div>
+
+        <!-- Summary -->
+        {% if invoice.notes %}
+        <div class="row mt-3">
+            <div class="col-12">
+                <p class="text-muted small mb-0">{{ invoice.notes }}</p>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Payment Instructions -->
+        {% if photographer.payment_instructions %}
+        <hr>
+        <div class="row mt-3">
+            <div class="col-12">
+                <strong>Payment Instructions:</strong>
+                <p class="mb-0" style="white-space:pre-line;">{{ photographer.payment_instructions }}</p>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Notes / Terms -->
+        {% if photographer.invoice_notes %}
+        <hr>
+        <div class="row mt-3">
+            <div class="col-12">
+                <strong>Terms & Conditions:</strong>
+                <p class="text-muted small mb-0" style="white-space:pre-line;">{{ photographer.invoice_notes }}</p>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

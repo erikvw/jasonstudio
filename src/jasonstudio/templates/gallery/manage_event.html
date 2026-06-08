@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}{% if event %}Edit{% else %}New{% endif %} Event — Jason Studio{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2>{% if event %}Event Details{% else %}New Event{% endif %}</h2>
+            <a href="{% url 'photographer_dashboard' %}" class="btn btn-outline-secondary">Back to Dashboard</a>
+        </div>
+
+        <form method="post">
+            {% csrf_token %}
+
+            <div class="card mb-4">
+                <div class="card-header"><strong>Customers</strong></div>
+                <div class="card-body">
+                    <p class="text-muted small">Select the customers who should have access to this event's gallery.</p>
+                    <div class="row">
+                        {% for checkbox in form.customers %}
+                        <div class="col-md-6 col-lg-4">
+                            <div class="form-check mb-2">
+                                {{ checkbox.tag }}
+                                <label class="form-check-label" for="{{ checkbox.id_for_label }}">
+                                    {{ checkbox.choice_label }}
+                                </label>
+                            </div>
+                        </div>
+                        {% empty %}
+                        <p class="text-muted">No customers yet. Add customers in the Admin.</p>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="card mb-4">
+                <div class="card-header"><strong>Event Information</strong></div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label for="{{ form.name.id_for_label }}" class="form-label">Event Name</label>
+                        <input type="text" name="name" id="{{ form.name.id_for_label }}"
+                               value="{{ form.name.value|default_if_none:'' }}"
+                               class="form-control {% if form.name.errors %}is-invalid{% endif %}"
+                               required>
+                        {% if form.name.errors %}<div class="invalid-feedback">{{ form.name.errors.0 }}</div>{% endif %}
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="{{ form.date.id_for_label }}" class="form-label">Date</label>
+                            <input type="date" name="date" id="{{ form.date.id_for_label }}"
+                                   value="{% if event %}{{ event.date|date:'Y-m-d' }}{% endif %}"
+                                   class="form-control {% if form.date.errors %}is-invalid{% endif %}"
+                                   required>
+                            {% if form.date.errors %}<div class="invalid-feedback">{{ form.date.errors.0 }}</div>{% endif %}
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="{{ form.status.id_for_label }}" class="form-label">Status</label>
+                            <select name="status" id="{{ form.status.id_for_label }}" class="form-select">
+                                {% for value, label in form.fields.status.choices %}
+                                <option value="{{ value }}" {% if form.status.value == value %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="{{ form.location.id_for_label }}" class="form-label">Location</label>
+                        <input type="text" name="location" id="{{ form.location.id_for_label }}"
+                               value="{{ form.location.value|default_if_none:'' }}"
+                               class="form-control">
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="{{ form.description.id_for_label }}" class="form-label">Description</label>
+                        <textarea name="description" id="{{ form.description.id_for_label }}"
+                                  class="form-control" rows="3">{{ form.description.value|default_if_none:'' }}</textarea>
+                    </div>
+                </div>
+            </div>
+
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary">Save</button>
+                <a href="{% url 'photographer_dashboard' %}" class="btn btn-outline-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

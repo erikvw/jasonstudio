@@ -1,0 +1,41 @@
+<div class="card-footer selection-bar p-2">
+    <div class="d-flex gap-1 justify-content-center">
+        <button class="btn btn-sm {% if current_choice == 'digital' %}btn-info{% else %}btn-outline-secondary{% endif %}"
+                hx-post="{% url 'toggle_selection' photo.pk %}"
+                hx-vals='{"choice": "digital"}'
+                hx-target="closest .selection-bar"
+                hx-swap="outerHTML">
+            Digital
+        </button>
+        <button class="btn btn-sm {% if current_choice == 'both' %}btn-success{% else %}btn-outline-secondary{% endif %}"
+                hx-post="{% url 'toggle_selection' photo.pk %}"
+                hx-vals='{"choice": "both"}'
+                hx-target="closest .selection-bar"
+                hx-swap="outerHTML"
+                hx-include="closest .selection-bar"
+                >
+            Print & Digital
+        </button>
+        <button class="btn btn-sm {% if current_choice == 'reject' %}btn-danger{% else %}btn-outline-secondary{% endif %}"
+                hx-post="{% url 'toggle_selection' photo.pk %}"
+                hx-vals='{"choice": "reject"}'
+                hx-target="closest .selection-bar"
+                hx-swap="outerHTML">
+            Reject
+        </button>
+    </div>
+    {% if current_choice == 'both' %}
+    <div class="d-flex justify-content-center mt-1">
+        <select name="print_size" class="form-select form-select-sm" style="width:auto;font-size:0.75rem;"
+                hx-post="{% url 'toggle_selection' photo.pk %}"
+                hx-vals='{"choice": "both"}'
+                hx-target="closest .selection-bar"
+                hx-swap="outerHTML"
+                hx-trigger="change">
+            {% for value, label in print_sizes %}
+            <option value="{{ value }}" {% if current_print_size == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    {% endif %}
+</div>

@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+{% block title %}Upload Photos — {{ event.name }}{% endblock %}
+{% block content %}
+<h2>Upload Photos — {{ event.name }}</h2>
+
+<div class="d-flex flex-wrap gap-2 mb-3 align-items-center">
+    <input type="file" id="file-input" name="photos" multiple accept="image/*" class="d-none">
+    <input type="file" id="folder-input" name="photos" multiple accept="image/*" webkitdirectory class="d-none">
+    <button type="button" class="btn btn-outline-primary btn-sm" onclick="document.getElementById('file-input').click()">Select Files</button>
+    <button type="button" class="btn btn-outline-primary btn-sm" onclick="document.getElementById('folder-input').click()">Select Folder</button>
+    <button type="button" id="upload-btn" class="btn btn-primary btn-sm" style="display:none" onclick="startUpload()">Upload</button>
+    {% if photos %}
+    <button type="button" id="regen-btn" class="btn btn-outline-warning btn-sm" onclick="startRegenerate()">
+        <i class="fas fa-sync-alt"></i> Regenerate Thumbnails
+    </button>
+    {% endif %}
+    <a href="{% url 'event_gallery' event.pk %}" class="btn btn-outline-secondary btn-sm">Gallery</a>
+    <span id="file-count" class="text-muted small"></span>
+</div>
+
+<!-- Progress section -->
+<div id="progress-section" style="display:none" class="mb-4">
+    <div class="d-flex justify-content-between mb-1">
+        <span id="progress-text" class="small text-muted">Processing...</span>
+        <span id="progress-pct" class="small text-muted">0%</span>
+    </div>
+    <div class="progress" style="height: 24px;">
+        <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated"
+             role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+        </div>
+    </div>
+    <div id="progress-detail" class="small text-muted mt-1"></div>
+</div>
+
+<!-- Status -->
+<div id="upload-status"></div>
+
+<hr>
+<div id="photo-grid" class="row mt-3">
+    {% include "gallery/partials/photo_grid.html" %}
+</div>
+
+<script>
+const BATCH_SIZE = 20;
+const UPLOAD_URL = "{% url 'upload_photos' event.pk %}";
+const REGEN_URL = "{% url 'regenerate_thumbnails' event.pk %}";
+const CSRF_TOKEN = "{{ csrf_token }}";
+const GALLERY_URL = "{% url 'event_gallery' event.pk %}";
+const PHOTO_IDS = [{% for p in photos %}"{{ p.pk }}"{% if not forloop.last %}, {% endif %}{% endfor %}];
+
+let allFiles = [];
+
+function collectFiles() {
+    const fileInput = document.getElementById("file-input");
+    const folderInput = document.getElementById("folder-input");
+    allFiles = [...fileInput.files, ...folderInput.files];
+    allFiles = allFiles.filter(f => f.type.startsWith("image/"));
+
+    const el = document.getElementById("file-count");
+    const btn = document.getElementById("upload-btn");
+    if (allFiles.length > 0) {
+        el.textContent = allFiles.length + " file" + (allFiles.length !== 1 ? "s" : "") + " selected";
+        btn.style.display = "inline-block";
+    } else {
+        el.textContent = "";
+        btn.style.display = "none";
+    }
+}
+
+document.getElementById("file-input").addEventListener("change", collectFiles);
+document.getElementById("folder-input").addEventListener("change", collectFiles);
+
+/* ── shared progress helpers ── */
+function showProgress() {
+    document.getElementById("progress-section").style.display = "block";
+    document.getElementById("upload-status").innerHTML = "";
+    const bar = document.getElementById("progress-bar");
+    bar.style.width = "0%";
+    bar.className = "progress-bar progress-bar-striped progress-bar-animated";
+}
+
+function updateProgress(batch, totalBatches, processed, total, label) {
+    const bar = document.getElementById("progress-bar");
+    const pct = document.getElementById("progress-pct");
+    const text = document.getElementById("progress-text");
+    const detail = document.getElementById("progress-detail");
+
+    const progress = Math.round(((batch + 1) / totalBatches) * 100);
+    bar.style.width = progress + "%";
+    bar.setAttribute("aria-valuenow", progress);
+    pct.textContent = progress + "%";
+    text.textContent = `${label} batch ${batch + 1} of ${totalBatches}...`;
+    detail.textContent = `${processed} of ${total} photos processed`;
+}
+
+function finishProgress(ok, okCount, failCount, label) {
+    const bar = document.getElementById("progress-bar");
+    const text = document.getElementById("progress-text");
+    const status = document.getElementById("upload-status");
+
+    bar.classList.remove("progress-bar-animated");
+    bar.style.width = "100%";
+
+    if (ok) {
+        bar.classList.add("bg-success");
+        text.textContent = `${label} complete!`;
+        status.innerHTML = `<div class="alert alert-success mt-2">
+            <strong>${okCount}</strong> photos processed.
+            <a href="${GALLERY_URL}" class="alert-link">View Gallery</a>
+        </div>`;
+    } else {
+        bar.classList.add("bg-warning");
+        text.textContent = `${label} finished with errors.`;
+        status.innerHTML = `<div class="alert alert-warning mt-2">
+            <strong>${okCount}</strong> processed, <strong>${failCount}</strong> failed.
+            <a href="${GALLERY_URL}" class="alert-link">View Gallery</a>
+        </div>`;
+    }
+}
+
+function setButtonsDisabled(disabled) {
+    for (const id of ["upload-btn", "file-input", "folder-input"]) {
+        const el = document.getElementById(id);
+        if (el) el.disabled = disabled;
+    }
+    const regen = document.getElementById("regen-btn");
+    if (regen) regen.disabled = disabled;
+}
+
+/* ── upload ── */
+async function startUpload() {
+    if (allFiles.length === 0) return;
+
+    const totalFiles = allFiles.length;
+    const totalBatches = Math.ceil(totalFiles / BATCH_SIZE);
+    let uploaded = 0;
+    let failed = 0;
+
+    setButtonsDisabled(true);
+    showProgress();
+
+    for (let batch = 0; batch < totalBatches; batch++) {
+        const start = batch * BATCH_SIZE;
+        const end = Math.min(start + BATCH_SIZE, totalFiles);
+        const batchFiles = allFiles.slice(start, end);
+
+        updateProgress(batch, totalBatches, uploaded, totalFiles, "Uploading");
+
+        const formData = new FormData();
+        formData.append("csrfmiddlewaretoken", CSRF_TOKEN);
+        for (const file of batchFiles) {
+            formData.append("photos", file);
+        }
+
+        try {
+            const response = await fetch(UPLOAD_URL, {
+                method: "POST",
+                body: formData,
+                headers: {"X-Requested-With": "XMLHttpRequest"},
+            });
+            if (response.ok) {
+                const data = await response.json();
+                uploaded += data.processed;
+            } else {
+                failed += batchFiles.length;
+            }
+        } catch (err) {
+            failed += batchFiles.length;
+            console.error(`Upload batch ${batch + 1} error:`, err);
+        }
+
+        updateProgress(batch, totalBatches, uploaded, totalFiles, "Uploading");
+    }
+
+    finishProgress(failed === 0, uploaded, failed, "Upload");
+    setButtonsDisabled(false);
+
+    document.getElementById("file-input").value = "";
+    document.getElementById("folder-input").value = "";
+    allFiles = [];
+    document.getElementById("file-count").textContent = "";
+    document.getElementById("upload-btn").style.display = "none";
+}
+
+/* ── regenerate thumbnails ── */
+async function startRegenerate() {
+    if (PHOTO_IDS.length === 0) return;
+    if (!confirm(`Regenerate thumbnails and watermarks for ${PHOTO_IDS.length} photos? This may take a while.`)) return;
+
+    const totalPhotos = PHOTO_IDS.length;
+    const totalBatches = Math.ceil(totalPhotos / BATCH_SIZE);
+    let processed = 0;
+    let skipped = 0;
+
+    setButtonsDisabled(true);
+    showProgress();
+
+    for (let batch = 0; batch < totalBatches; batch++) {
+        const start = batch * BATCH_SIZE;
+        const end = Math.min(start + BATCH_SIZE, totalPhotos);
+        const batchIds = PHOTO_IDS.slice(start, end);
+
+        updateProgress(batch, totalBatches, processed, totalPhotos, "Regenerating");
+
+        const formData = new FormData();
+        formData.append("csrfmiddlewaretoken", CSRF_TOKEN);
+        for (const id of batchIds) {
+            formData.append("photo_ids", id);
+        }
+
+        try {
+            const response = await fetch(REGEN_URL, {
+                method: "POST",
+                body: formData,
+                headers: {"X-Requested-With": "XMLHttpRequest"},
+            });
+            if (response.ok) {
+                const data = await response.json();
+                processed += data.processed;
+                skipped += data.skipped;
+            } else {
+                skipped += batchIds.length;
+            }
+        } catch (err) {
+            skipped += batchIds.length;
+            console.error(`Regen batch ${batch + 1} error:`, err);
+        }
+
+        updateProgress(batch, totalBatches, processed, totalPhotos, "Regenerating");
+    }
+
+    finishProgress(skipped === 0, processed, skipped, "Regeneration");
+    setButtonsDisabled(false);
+}
+</script>
+{% endblock %}
