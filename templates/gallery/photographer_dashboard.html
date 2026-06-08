@@ -1,31 +1,84 @@
 {% extends "base.html" %}
 {% block title %}Photographer Dashboard — Jason Studio{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h2>Events</h2>
-    <a href="{% url 'create_event' %}" class="btn btn-primary">New Event</a>
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+    <h2 class="mb-0">Events</h2>
+    <div class="d-flex gap-2 flex-wrap">
+        <a href="{% url 'service_list' %}" class="btn btn-outline-secondary btn-sm">Services</a>
+        <a href="{% url 'customer_list' %}" class="btn btn-outline-dark btn-sm">Customers</a>
+        <a href="{% url 'create_event' %}" class="btn btn-primary btn-sm">New Event</a>
+    </div>
 </div>
-<table class="table">
-    <thead>
-        <tr><th>Event</th><th>Customer</th><th>Date</th><th>Status</th><th>Photos</th><th></th></tr>
-    </thead>
-    <tbody>
-    {% for event in events %}
-        <tr>
-            <td>{{ event.name }}</td>
-            <td>{{ event.customer }}</td>
-            <td>{{ event.date }}</td>
-            <td><span class="badge bg-{% if event.status == 'published' %}success{% elif event.status == 'draft' %}secondary{% else %}warning{% endif %}">{{ event.get_status_display }}</span></td>
-            <td>{{ event.photo_count }}</td>
-            <td>
-                <a href="{% url 'upload_photos' event.pk %}" class="btn btn-sm btn-outline-primary">Upload</a>
-                <a href="{% url 'event_gallery' event.pk %}" class="btn btn-sm btn-outline-secondary">View</a>
-                <a href="{% url 'edit_event' event.pk %}" class="btn btn-sm btn-outline-dark">Edit</a>
-            </td>
-        </tr>
-    {% empty %}
-        <tr><td colspan="6" class="text-muted">No events yet.</td></tr>
-    {% endfor %}
-    </tbody>
-</table>
+
+{% for event in events %}
+<!-- ── Card layout (small screens) ── -->
+<div class="d-md-none card mb-3">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start mb-2">
+            <div>
+                <h5 class="card-title mb-1">{{ event.name }}</h5>
+                <small class="text-muted">{{ event.date|date:"N j, Y" }}</small>
+            </div>
+            <span class="badge bg-{% if event.status == 'published' %}success{% elif event.status == 'draft' %}secondary{% else %}warning{% endif %}">
+                {{ event.get_status_display }}
+            </span>
+        </div>
+        <div class="mb-2">
+            <small class="text-muted">
+                {% for c in event.customers.all %}{{ c }}{% if not forloop.last %}, {% endif %}{% empty %}No customers{% endfor %}
+                &middot; {{ event.photo_count }} photo{{ event.photo_count|pluralize }}
+            </small>
+        </div>
+        <div class="d-flex flex-wrap gap-1">
+            <a href="{% url 'event_orders' event.pk %}" class="btn btn-sm btn-outline-success">Quotes & Orders</a>
+            <a href="{% url 'edit_event' event.pk %}" class="btn btn-sm btn-outline-dark">Details</a>
+            <a href="{% url 'upload_photos' event.pk %}" class="btn btn-sm btn-outline-primary">Upload</a>
+            <a href="{% url 'event_gallery' event.pk %}" class="btn btn-sm btn-outline-secondary">Gallery</a>
+        </div>
+    </div>
+</div>
+{% empty %}
+<div class="d-md-none">
+    <p class="text-muted">No events yet.</p>
+</div>
+{% endfor %}
+
+<!-- ── Table layout (medium screens and up) ── -->
+<div class="d-none d-md-block table-responsive">
+    <table class="table table-hover align-middle">
+        <thead>
+            <tr>
+                <th>Event</th>
+                <th>Customers</th>
+                <th>Date</th>
+                <th>Status</th>
+                <th class="text-end">Photos</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for event in events %}
+            <tr>
+                <td>{{ event.name }}</td>
+                <td>{% for c in event.customers.all %}{{ c }}{% if not forloop.last %}, {% endif %}{% empty %}<span class="text-muted">—</span>{% endfor %}</td>
+                <td class="text-nowrap">{{ event.date|date:"N j, Y" }}</td>
+                <td>
+                    <span class="badge bg-{% if event.status == 'published' %}success{% elif event.status == 'draft' %}secondary{% else %}warning{% endif %}">
+                        {{ event.get_status_display }}
+                    </span>
+                </td>
+                <td class="text-end">{{ event.photo_count }}</td>
+                <td class="text-end text-nowrap">
+                    <a href="{% url 'event_orders' event.pk %}" class="btn btn-sm btn-outline-success">Quotes & Orders</a>
+                    <a href="{% url 'edit_event' event.pk %}" class="btn btn-sm btn-outline-dark">Details</a>
+                    <a href="{% url 'upload_photos' event.pk %}" class="btn btn-sm btn-outline-primary">Upload</a>
+                    <a href="{% url 'event_gallery' event.pk %}" class="btn btn-sm btn-outline-secondary">Gallery</a>
+                </td>
+            </tr>
+        {% empty %}
+            <tr><td colspan="6" class="text-muted">No events yet.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
 {% endblock %}

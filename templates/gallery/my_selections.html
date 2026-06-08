@@ -1,49 +1,147 @@
 {% extends "base.html" %}
 {% block title %}My Selections — Jason Studio{% endblock %}
 {% block content %}
-<h2>My Selections</h2>
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h2 class="mb-0">My Selections</h2>
+    {% if event_filter %}
+    <a href="{% url 'my_selections' %}" class="btn btn-outline-secondary btn-sm">View All Events</a>
+    {% endif %}
+</div>
 
-<h4 class="mt-4">Print</h4>
-{% if print_selections %}
-<div class="row">
-    {% for sel in print_selections %}
-    <div class="col-md-3 col-sm-4 mb-3">
-        <div class="card">
-            {% if sel.photo.watermarked %}
-            <img src="{{ sel.photo.watermarked.url }}" class="card-img-top" style="height:180px;object-fit:cover;">
-            {% else %}
-            <img src="{{ sel.photo.original.url }}" class="card-img-top" style="height:180px;object-fit:cover;">
-            {% endif %}
-            <div class="card-body p-2">
-                <small class="text-muted">{{ sel.photo.event.name }}</small>
+{% for group in grouped_by_event %}
+<div class="card mb-4">
+    <div class="card-header">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+            <div>
+                <strong>{{ group.event.name }}</strong>
+                <span class="text-muted d-none d-sm-inline">— {{ group.event.date }}</span>
+                <span class="text-muted d-sm-none d-block small">{{ group.event.date }}</span>
+                {% if group.order %}
+                    {% if group.order.is_paid %}
+                    <span class="badge bg-success ms-1">Paid</span>
+                    {% else %}
+                    <span class="badge bg-warning text-dark ms-1">Pending</span>
+                    {% endif %}
+                {% endif %}
+            </div>
+            <div class="d-flex flex-wrap gap-1">
+                {% if group.order and group.order.download_available %}
+                <a href="{% url 'customer_download' group.event.pk %}" class="btn btn-sm btn-outline-success">
+                    <i class="fa-solid fa-download"></i><span class="d-none d-sm-inline"> Download</span>
+                </a>
+                {% if group.order.share_link and group.order.share_link.is_active %}
+                <button class="btn btn-sm btn-outline-dark" title="Click to copy share code"
+                        onclick="navigator.clipboard.writeText('{{ group.order.share_link.code }}'); this.innerHTML='<i class=\'fa-solid fa-check\'></i> Copied!'; setTimeout(() => this.innerHTML='<i class=\'fa-solid fa-copy\'></i> {{ group.order.share_link.code }}', 2000);">
+                    <i class="fa-solid fa-copy"></i> {{ group.order.share_link.code }}
+                </button>
+                {% else %}
+                <form method="post" action="{% url 'create_share_link' group.event.pk %}" class="d-inline">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm btn-outline-primary" title="Generate share link">
+                        <i class="fa-solid fa-share-nodes"></i><span class="d-none d-sm-inline"> Share</span>
+                    </button>
+                </form>
+                {% endif %}
+                {% elif group.order and group.order.is_paid and not group.order.download_available %}
+                <span class="btn btn-sm btn-outline-secondary disabled">
+                    <i class="fa-solid fa-clock"></i> Expired
+                </span>
+                {% endif %}
+                <a href="{% url 'selection_invoice' group.event.pk %}" class="btn btn-sm btn-outline-dark">
+                    <i class="fa-solid fa-file-invoice"></i><span class="d-none d-sm-inline"> Invoice</span>
+                </a>
             </div>
         </div>
     </div>
-    {% endfor %}
-</div>
-{% else %}
-<p class="text-muted">No print selections yet.</p>
-{% endif %}
-
-<h4 class="mt-4">Digital Library</h4>
-{% if digital_selections %}
-<div class="row">
-    {% for sel in digital_selections %}
-    <div class="col-md-3 col-sm-4 mb-3">
-        <div class="card">
-            {% if sel.photo.watermarked %}
-            <img src="{{ sel.photo.watermarked.url }}" class="card-img-top" style="height:180px;object-fit:cover;">
-            {% else %}
-            <img src="{{ sel.photo.original.url }}" class="card-img-top" style="height:180px;object-fit:cover;">
-            {% endif %}
-            <div class="card-body p-2">
-                <small class="text-muted">{{ sel.photo.event.name }}</small>
+    <div class="card-body">
+        {% if group.order and group.order.share_link and group.order.share_link.is_active %}
+        <div class="alert alert-light border mb-3 py-2 px-3">
+            <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                <small>
+                    <i class="fa-solid fa-share-nodes"></i>
+                    Share code <strong>{{ group.order.share_link.code }}</strong> — give this code to friends so they can download your photos.
+                    <span class="d-none d-md-inline">
+                        They visit <code>{{ request.scheme }}://{{ request.get_host }}/shared/{{ group.order.share_link.code }}/</code>
+                    </span>
+                </small>
+                <button type="button" class="btn btn-sm btn-outline-danger flex-shrink-0"
+                        data-bs-toggle="modal" data-bs-target="#deactivateModal-{{ group.event.pk }}">
+                    <i class="fa-solid fa-xmark"></i> Deactivate
+                </button>
             </div>
         </div>
+
+        <!-- Deactivate Confirmation Modal -->
+        <div class="modal fade" id="deactivateModal-{{ group.event.pk }}" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Deactivate Share Link</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p>Are you sure you want to deactivate this share link?</p>
+                        <p class="text-muted mb-0">Friends will no longer be able to download photos using this code.</p>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <form method="post" action="{% url 'deactivate_share_link' group.event.pk %}" class="d-inline">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-danger">Deactivate</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if group.both %}
+        <h5>Print & Digital <span class="badge bg-success">{{ group.both|length }}</span></h5>
+        <div class="row mb-3">
+            {% for sel in group.both %}
+            <div class="col-6 col-sm-4 col-md-3 mb-3">
+                <div class="card">
+                    {% if sel.photo.thumbnail %}
+                    <img src="{{ sel.photo.thumbnail.url }}" class="card-img-top" style="height:150px;object-fit:cover;">
+                    {% elif sel.photo.watermarked %}
+                    <img src="{{ sel.photo.watermarked.url }}" class="card-img-top" style="height:150px;object-fit:cover;">
+                    {% else %}
+                    <img src="{{ sel.photo.original.url }}" class="card-img-top" style="height:150px;object-fit:cover;">
+                    {% endif %}
+                    <div class="card-body p-2">
+                        <small class="text-muted">{{ sel.get_print_size_display }}</small>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if group.digital %}
+        <h5>Digital <span class="badge bg-info">{{ group.digital|length }}</span></h5>
+        <div class="row">
+            {% for sel in group.digital %}
+            <div class="col-6 col-sm-4 col-md-3 mb-3">
+                <div class="card">
+                    {% if sel.photo.thumbnail %}
+                    <img src="{{ sel.photo.thumbnail.url }}" class="card-img-top" style="height:150px;object-fit:cover;">
+                    {% elif sel.photo.watermarked %}
+                    <img src="{{ sel.photo.watermarked.url }}" class="card-img-top" style="height:150px;object-fit:cover;">
+                    {% else %}
+                    <img src="{{ sel.photo.original.url }}" class="card-img-top" style="height:150px;object-fit:cover;">
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if not group.both and not group.digital %}
+        <p class="text-muted">No selections yet.</p>
+        {% endif %}
     </div>
-    {% endfor %}
 </div>
-{% else %}
-<p class="text-muted">No digital selections yet.</p>
-{% endif %}
+{% empty %}
+<p class="text-muted">You haven't made any selections yet.</p>
+{% endfor %}
 {% endblock %}

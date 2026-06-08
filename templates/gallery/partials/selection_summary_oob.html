@@ -1,0 +1,20 @@
+<div id="selection-summary" hx-swap-oob="true" class="alert alert-light border mb-3">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="d-flex flex-wrap align-items-center gap-1">
+            <strong>Your selections:</strong>
+            <span class="badge bg-info">{{ filter_counts.digital }} Digital</span>
+            <span class="badge bg-success">{{ filter_counts.both }} Print & Digital</span>
+            <span class="badge bg-danger">{{ filter_counts.reject }} Rejected</span>
+            <span class="badge bg-secondary">{{ filter_counts.undecided }} Undecided</span>
+        </div>
+        <div>
+            {% if filter_counts.digital or filter_counts.both %}
+            <a href="{% url 'my_selections' %}?event={{ event.pk }}" class="btn btn-sm btn-primary">
+                Review <i class="fa-solid fa-arrow-right"></i>
+            </a>
+            {% else %}
+            <span class="text-muted small">Select photos to continue</span>
+            {% endif %}
+        </div>
+    </div>
+</div>

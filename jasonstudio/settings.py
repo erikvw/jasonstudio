@@ -43,6 +43,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "accounts.context_processors.user_role",
             ],
         },
     },
@@ -82,3 +83,4 @@ LOGOUT_REDIRECT_URL = "/"
 LOGIN_URL = "/accounts/login/"
 
 WATERMARK_TEXT = "PROOF"
+WATERMARK_OPACITY = 75

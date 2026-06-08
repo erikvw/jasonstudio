@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Download Photos — {{ event.name }}{% endblock %}
+{% block content %}
+<div class="row justify-content-center mt-5">
+    <div class="col-md-6">
+        <div class="card text-center">
+            <div class="card-body py-5">
+                <h3 class="mb-3">{{ event.name }}</h3>
+                <p class="text-muted">{{ event.date }}</p>
+                <hr>
+                <p>You've been invited to download photos from this event.</p>
+                <a href="{% url 'shared_download_file' share_link.code %}" class="btn btn-lg btn-success">
+                    <i class="fa-solid fa-download"></i> Download Photos
+                </a>
+                <p class="text-muted small mt-3 mb-0">
+                    This link expires {{ order.download_expires_at|date:"N j, Y" }}.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,12 @@
+{% extends "admin/base.html" %}
+
+{% block title %}{{ title }} | Jason Studio Admin{% endblock %}
+
+{% block branding %}
+    <h1 id="site-name"><a href="{% url 'admin:index' %}">Jason Studio Admin</a></h1>
+{% endblock %}
+
+{% block userlinks %}
+    <a href="{% url 'home' %}">Back to Site</a> |
+    {{ block.super }}
+{% endblock %}

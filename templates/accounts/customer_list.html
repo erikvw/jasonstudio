@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% block title %}Customers — Jason Studio{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+    <h2 class="mb-0">Customers</h2>
+    <div class="d-flex gap-2 flex-wrap">
+        {% if show_inactive %}
+        <a href="{% url 'customer_list' %}" class="btn btn-outline-secondary btn-sm">Hide Inactive</a>
+        {% else %}
+        <a href="{% url 'customer_list' %}?show_inactive=1" class="btn btn-outline-secondary btn-sm">Show Inactive</a>
+        {% endif %}
+        <a href="{% url 'customer_add' %}" class="btn btn-primary btn-sm">Add Customer</a>
+        <a href="{% url 'photographer_dashboard' %}" class="btn btn-outline-secondary btn-sm">Dashboard</a>
+    </div>
+</div>
+
+{% if messages %}
+{% for message in messages %}
+<div class="alert alert-{{ message.tags }}">{{ message }}</div>
+{% endfor %}
+{% endif %}
+
+{% if customers %}
+<!-- Card layout (small screens) -->
+{% for customer in customers %}
+<div class="d-md-none card mb-3 {% if not customer.is_active %}border-secondary{% endif %}">
+    <div class="card-body {% if not customer.is_active %}text-muted{% endif %}">
+        <div class="d-flex justify-content-between align-items-start mb-2">
+            <div>
+                <h6 class="card-title mb-0">{{ customer.user.first_name|default:"—" }} {{ customer.user.last_name|default:"" }}</h6>
+                {% if customer.company_name %}<small class="text-muted">{{ customer.company_name }}</small>{% endif %}
+            </div>
+            {% if customer.is_active %}
+            <span class="badge bg-success">Active</span>
+            {% else %}
+            <span class="badge bg-secondary">Inactive</span>
+            {% endif %}
+        </div>
+        {% if customer.user.email %}<small class="d-block text-muted">{{ customer.user.email }}</small>{% endif %}
+        {% if customer.phone %}<small class="d-block text-muted">{{ customer.phone }}</small>{% endif %}
+        <small class="d-block text-muted mb-2">{{ customer.events.count }} event{{ customer.events.count|pluralize }}</small>
+        <div class="d-flex flex-wrap gap-1">
+            <a href="{% url 'customer_edit' customer.pk %}" class="btn btn-sm btn-outline-dark">Edit</a>
+            <form method="post" action="{% url 'customer_toggle_active' customer.pk %}" class="d-inline">
+                {% csrf_token %}
+                {% if customer.is_active %}
+                <button type="submit" class="btn btn-sm btn-outline-warning">Deactivate</button>
+                {% else %}
+                <button type="submit" class="btn btn-sm btn-outline-success">Activate</button>
+                {% endif %}
+            </form>
+            {% if not customer.selections.count and not customer.orders.count and not customer.events.count %}
+            <button type="button" class="btn btn-sm btn-outline-danger"
+                    data-bs-toggle="modal" data-bs-target="#deleteModal-{{ customer.pk }}">
+                Delete
+            </button>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% empty %}
+<div class="d-md-none alert alert-info">No customers yet. Click "Add Customer" to create one.</div>
+{% endfor %}
+
+<!-- Table layout (medium screens and up) -->
+<div class="d-none d-md-block table-responsive">
+    <table class="table table-hover align-middle">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Company</th>
+                <th>Email</th>
+                <th>Phone</th>
+                <th>Status</th>
+                <th class="text-end">Events</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for customer in customers %}
+            <tr class="{% if not customer.is_active %}table-secondary{% endif %}">
+                <td class="text-nowrap">{{ customer.user.first_name|default:"—" }} {{ customer.user.last_name|default:"" }}</td>
+                <td>{{ customer.company_name|default:"—" }}</td>
+                <td>{{ customer.user.email|default:"—" }}</td>
+                <td class="text-nowrap">{{ customer.phone|default:"—" }}</td>
+                <td>
+                    {% if customer.is_active %}
+                    <span class="badge bg-success">Active</span>
+                    {% else %}
+                    <span class="badge bg-secondary">Inactive</span>
+                    {% endif %}
+                </td>
+                <td class="text-end">{{ customer.events.count }}</td>
+                <td class="text-end text-nowrap">
+                    <a href="{% url 'customer_edit' customer.pk %}" class="btn btn-sm btn-outline-dark">Edit</a>
+                    <form method="post" action="{% url 'customer_toggle_active' customer.pk %}" class="d-inline">
+                        {% csrf_token %}
+                        {% if customer.is_active %}
+                        <button type="submit" class="btn btn-sm btn-outline-warning">Deactivate</button>
+                        {% else %}
+                        <button type="submit" class="btn btn-sm btn-outline-success">Activate</button>
+                        {% endif %}
+                    </form>
+                    {% if not customer.selections.count and not customer.orders.count and not customer.events.count %}
+                    <button type="button" class="btn btn-sm btn-outline-danger"
+                            data-bs-toggle="modal" data-bs-target="#deleteModal-{{ customer.pk }}">
+                        Delete
+                    </button>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Delete modals (shared by both layouts) -->
+{% for customer in customers %}
+{% if not customer.selections.count and not customer.orders.count and not customer.events.count %}
+<div class="modal fade" id="deleteModal-{{ customer.pk }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Delete Customer</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete <strong>{{ customer.user.get_full_name|default:customer.user.username }}</strong>?</p>
+                <p class="text-muted mb-0">This cannot be undone.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <form method="post" action="{% url 'customer_delete' customer.pk %}" class="d-inline">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-danger">Delete</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endfor %}
+
+{% else %}
+<div class="alert alert-info">No customers yet. Click "Add Customer" to create one.</div>
+{% endif %}
+{% endblock %}

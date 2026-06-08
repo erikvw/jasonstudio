@@ -13,6 +13,7 @@
                 <p class="card-text text-muted">{{ event.date }} — {{ event.location }}</p>
                 <p class="card-text">{{ event.photo_count }} photo{{ event.photo_count|pluralize }}</p>
                 <a href="{% url 'event_gallery' event.pk %}" class="btn btn-outline-primary btn-sm">View Gallery</a>
+                <a href="{% url 'my_selections' %}?event={{ event.pk }}" class="btn btn-outline-dark btn-sm">My Selections</a>
             </div>
         </div>
     </div>
