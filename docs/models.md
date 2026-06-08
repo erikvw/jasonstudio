@@ -147,6 +147,7 @@ Individual line on an Invoice. Auto-generated from the order's selections.
 Records a payment received against an Invoice.
 
 - Methods: Cash, E-Transfer, Credit Card, Cheque, Other
+- `reference` field is encrypted (transaction IDs, cheque numbers)
 - Linked to Invoice (nullable for legacy data)
 
 ### ShareLink
@@ -163,11 +164,11 @@ Short code allowing friends to download digital photos from an order.
 ### Customer
 
 - Linked 1:1 to Django User
-- Fields: company_name, phone, is_active, notes
+- Fields: company_name, phone (encrypted), is_active, notes
 - Protected from deletion when linked to events, orders, or selections
 
 ### PhotographerProfile
 
 - Linked 1:1 to Django User
-- Invoice settings: tax_rate, payment_terms, payment_instructions, invoice_notes
-- Contact: business_name, phone, email, address
+- Invoice settings: tax_rate, payment_terms, payment_instructions (encrypted), invoice_notes
+- Contact: business_name, phone (encrypted), email (encrypted), address (encrypted)

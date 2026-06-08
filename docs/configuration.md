@@ -2,7 +2,16 @@
 
 ## Django Settings
 
-The app uses standard Django settings in `jasonstudio/settings.py`.
+Settings are split across multiple files in `src/jasonstudio/settings/`:
+
+| File | Purpose |
+|------|---------|
+| `base.py` | Shared settings (installed apps, middleware, templates, etc.) |
+| `debug.py` | Local development (SQLite, DEBUG=True) |
+| `ci.py` | CI testing (reads DATABASE_URL from `.env`) |
+| `live.py` | Production (all secrets from env, HTTPS/HSTS enabled) |
+
+The default `DJANGO_SETTINGS_MODULE` is `jasonstudio.settings.debug`.
 
 ### Media Files
 
@@ -30,11 +39,68 @@ Configure invoice-related settings in the Django admin under **Photographer Prof
 
 ## Environment Variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `SECRET_KEY` | Django secret key | (dev key in settings) |
-| `DEBUG` | Enable debug mode | `True` |
-| `ALLOWED_HOSTS` | Comma-separated hosts | `[]` |
+All secrets are read from a `.env` file in the project root via
+[django-environ](https://django-environ.readthedocs.io/). Copy
+`.env.example` to `.env` and fill in the values:
+
+```bash
+cp .env.example .env
+```
+
+| Variable | Required in | Description |
+|----------|-------------|-------------|
+| `DJANGO_SECRET_KEY` | debug, live | Django secret key. No default in debug/live -- must be set. |
+| `DJANGO_SALT_KEY` | debug, live | Salt for Fernet field encryption. No default in debug/live -- must be set. |
+| `DATABASE_URL` | ci, live | Database connection string (PostgreSQL or MySQL). |
+| `DJANGO_ALLOWED_HOSTS` | live | Comma-separated allowed hosts. |
+
+The CI settings provide safe defaults for `DJANGO_SECRET_KEY` and `DJANGO_SALT_KEY` so no
+`.env` file is needed for the database connection URL (written by the CI workflow).
+
+## Field Encryption
+
+Sensitive personal data is encrypted at rest using
+[django-fernet-encrypted-fields](https://github.com/jazzband/django-fernet-encrypted-fields).
+Encryption is symmetric (AES via Fernet) and derived from `SECRET_KEY` + `SALT_KEY`.
+
+### Encrypted fields
+
+| Model | Field | Type |
+|-------|-------|------|
+| Customer | phone | EncryptedCharField |
+| PhotographerProfile | phone | EncryptedCharField |
+| PhotographerProfile | email | EncryptedEmailField |
+| PhotographerProfile | address | EncryptedTextField |
+| PhotographerProfile | payment_instructions | EncryptedTextField |
+| Payment | reference | EncryptedCharField |
+
+### Important notes
+
+- Encrypted fields are stored as base64-encoded text. They **cannot** be filtered, searched,
+  or ordered at the database level.
+- Empty values are stored as `NULL` (not encrypted empty strings).
+- Works with all database backends (SQLite, PostgreSQL, MySQL).
+
+### Key rotation
+
+To rotate `SALT_KEY`, convert it to a list with the new key first:
+
+```python
+SALT_KEY = [
+    "new-salt-key",
+    "old-salt-key",
+]
+```
+
+New data is encrypted with the first key; decryption tries all keys in order.
+Re-save existing records to re-encrypt with the new key.
+
+For `SECRET_KEY` rotation (Django 4.1+), use `SECRET_KEY_FALLBACKS`:
+
+```python
+SECRET_KEY = "new-secret-key"
+SECRET_KEY_FALLBACKS = ["old-secret-key"]
+```
 
 ## Watermarking
 
