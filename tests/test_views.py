@@ -129,7 +129,7 @@ class TestSelectionInvoiceView:
 
     def test_invoice_calculates_totals(self, customer_client, event_with_customer, photo, customer, order, photographer_user):
         Selection.objects.create(photo=photo, customer=customer, choice="digital")
-        resp = customer_client.get(
+        customer_client.get(
             reverse("selection_invoice", args=[event_with_customer.pk])
         )
         invoice = Invoice.objects.get(order=order)
@@ -198,7 +198,7 @@ class TestShareLinkViews:
         assert link.is_active is False
 
     def test_shared_download_page_valid_code(self, client, paid_order):
-        link = ShareLink.objects.create(order=paid_order, code="VALID1")
+        ShareLink.objects.create(order=paid_order, code="VALID1")
         resp = client.get(reverse("shared_download_page", args=["VALID1"]))
         assert resp.status_code == 200
 

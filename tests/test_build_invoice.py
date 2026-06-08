@@ -66,9 +66,6 @@ class TestBuildInvoice:
 
     def test_updates_line_items_on_rebuild(self, order, photos, customer):
         Selection.objects.create(photo=photos[0], customer=customer, choice="digital")
-        invoice = _build_invoice(order)
-        initial_count = invoice.line_items.count()
-
         # Add another selection and rebuild
         Selection.objects.create(photo=photos[1], customer=customer, choice="both", print_size="4x6")
         invoice = _build_invoice(order)
