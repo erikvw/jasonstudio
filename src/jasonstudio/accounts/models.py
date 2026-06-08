@@ -3,6 +3,11 @@ import uuid
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
+from encrypted_fields.fields import (
+    EncryptedCharField,
+    EncryptedEmailField,
+    EncryptedTextField,
+)
 
 
 class Customer(models.Model):
@@ -13,7 +18,7 @@ class Customer(models.Model):
         related_name="customer_profile",
     )
     company_name = models.CharField(max_length=200, blank=True, default="")
-    phone = models.CharField(max_length=20, blank=True, default="")
+    phone = EncryptedCharField(max_length=20, blank=True, null=True, default="")
     is_active = models.BooleanField(default=True)
     notes = models.TextField(blank=True, default="")
     created = models.DateTimeField(auto_now_add=True)
@@ -34,11 +39,14 @@ class PhotographerProfile(models.Model):
         related_name="photographer_profile",
     )
     business_name = models.CharField(max_length=200, blank=True, default="")
-    phone = models.CharField(max_length=20, blank=True, default="")
-    email = models.EmailField(blank=True, default="")
-    address = models.TextField(blank=True, default="", help_text="Business address.")
-    payment_instructions = models.TextField(
+    phone = EncryptedCharField(max_length=20, blank=True, null=True, default="")
+    email = EncryptedEmailField(blank=True, null=True, default="")
+    address = EncryptedTextField(
+        blank=True, null=True, default="", help_text="Business address."
+    )
+    payment_instructions = EncryptedTextField(
         blank=True,
+        null=True,
         default="",
         help_text="Payment details shown on invoices (bank, Venmo, etc.).",
     )
@@ -440,9 +448,10 @@ class Payment(models.Model):
         choices=Method.choices,
         default=Method.ETRANSFER,
     )
-    reference = models.CharField(
+    reference = EncryptedCharField(
         max_length=200,
         blank=True,
+        null=True,
         default="",
         help_text="Transaction ID, cheque number, etc.",
     )

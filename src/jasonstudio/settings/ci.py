@@ -2,6 +2,7 @@ from .base import *  # noqa: F401, F403
 from .base import env
 
 SECRET_KEY = env("DJANGO_SECRET_KEY", default="ci-test-secret-key-not-for-production")
+SALT_KEY = env("DJANGO_SALT_KEY", default="ci-test-salt-key-not-for-production")
 
 DEBUG = False
 

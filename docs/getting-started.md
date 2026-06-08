@@ -8,10 +8,23 @@
 ## Installation
 
 ```bash
-git clone https://github.com/yourorg/jasonstudio.git
+git clone https://github.com/erikvw/jasonstudio.git
 cd jasonstudio
 uv sync --dev
 ```
+
+## Environment Setup
+
+Copy the example environment file and fill in your keys:
+
+```bash
+cp .env.example .env
+```
+
+At minimum you need `DJANGO_SECRET_KEY` and `DJANGO_SALT_KEY` set.
+For local development the default SQLite database requires no `DATABASE_URL`.
+
+See {doc}`configuration` for the full list of environment variables.
 
 ## Database Setup
 

@@ -7,3 +7,24 @@
 # jasonstudio
 
 A simple photography studio management application built with Django.
+
+Documentation: [jasonstudio.readthedocs.io](https://jasonstudio.readthedocs.io)
+
+## Quickstart
+
+```bash
+git clone https://github.com/erikvw/jasonstudio.git
+cd jasonstudio
+uv sync --dev
+cp .env.example .env
+# Edit .env — set DJANGO_SECRET_KEY and DJANGO_SALT_KEY
+uv run python manage.py migrate
+uv run python manage.py createsuperuser
+uv run python manage.py runserver
+```
+
+## Running tests
+
+```bash
+uv run --dev pytest
+```
