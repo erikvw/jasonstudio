@@ -86,6 +86,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y pkg-config default-libmysqlclient-dev
 
+      - name: Grant MySQL test DB privileges
+        if: matrix.database == 'mysql'
+        run: >-
+          mysql -h 127.0.0.1 -u root -prootpass -e
+          "GRANT ALL ON *.* TO 'jasonstudio'@'%'; FLUSH PRIVILEGES;"
+
       - name: Install dependencies
         run: uv sync --dev --extra mysql
 
