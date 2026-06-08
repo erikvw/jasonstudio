@@ -182,7 +182,9 @@ class TestPaymentModel:
     def test_payment_linked_to_invoice(self, order):
         invoice = Invoice.objects.create(order=order)
         payment = Payment.objects.create(
-            invoice=invoice, amount=Decimal("100.00"), method=Payment.Method.ETRANSFER,
+            invoice=invoice,
+            amount=Decimal("100.00"),
+            method=Payment.Method.ETRANSFER,
         )
         assert payment.invoice == invoice
         assert invoice.payments.count() == 1
@@ -190,7 +192,8 @@ class TestPaymentModel:
     def test_str_with_invoice(self, order):
         invoice = Invoice.objects.create(order=order)
         payment = Payment.objects.create(
-            invoice=invoice, amount=Decimal("50.00"),
+            invoice=invoice,
+            amount=Decimal("50.00"),
         )
         assert "$50.00" in str(payment)
         assert invoice.invoice_number in str(payment)

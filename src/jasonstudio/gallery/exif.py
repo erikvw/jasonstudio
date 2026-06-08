@@ -34,8 +34,10 @@ def extract_exif(image_file: BytesIO) -> dict[str, Any]:
             raw = exif.get(tag)
             if raw:
                 try:
-                    data["date_taken"] = datetime.strptime(str(raw), "%Y:%m:%d %H:%M:%S")
-                except (ValueError, TypeError):
+                    data["date_taken"] = datetime.strptime(
+                        str(raw), "%Y:%m:%d %H:%M:%S"
+                    )
+                except ValueError, TypeError:
                     pass
                 break
 
@@ -77,5 +79,5 @@ def _rational_to_float(value: Any) -> float:
             return value.numerator / value.denominator
     try:
         return float(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return 0.0

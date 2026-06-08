@@ -46,7 +46,9 @@ class TestHomeView:
 
 
 class TestEventGalleryView:
-    def test_customer_can_view_gallery(self, customer_client, event_with_customer, photos):
+    def test_customer_can_view_gallery(
+        self, customer_client, event_with_customer, photos
+    ):
         resp = customer_client.get(
             reverse("event_gallery", args=[event_with_customer.pk])
         )
@@ -61,30 +63,42 @@ class TestEventGalleryView:
 
 
 class TestToggleSelectionView:
-    def test_toggle_creates_selection(self, customer_client, event_with_customer, photo):
+    def test_toggle_creates_selection(
+        self, customer_client, event_with_customer, photo
+    ):
         url = reverse("toggle_selection", args=[photo.pk])
         resp = customer_client.post(
-            url, {"choice": "digital"}, HTTP_HX_REQUEST="true",
+            url,
+            {"choice": "digital"},
+            HTTP_HX_REQUEST="true",
         )
         assert resp.status_code == 200
         assert Selection.objects.filter(photo=photo).exists()
 
-    def test_toggle_changes_choice(self, customer_client, event_with_customer, photo, customer):
+    def test_toggle_changes_choice(
+        self, customer_client, event_with_customer, photo, customer
+    ):
         Selection.objects.create(photo=photo, customer=customer, choice="digital")
         url = reverse("toggle_selection", args=[photo.pk])
         resp = customer_client.post(
-            url, {"choice": "both", "print_size": "5x7"}, HTTP_HX_REQUEST="true",
+            url,
+            {"choice": "both", "print_size": "5x7"},
+            HTTP_HX_REQUEST="true",
         )
         assert resp.status_code == 200
         sel = Selection.objects.get(photo=photo, customer=customer)
         assert sel.choice == "both"
         assert sel.print_size == "5x7"
 
-    def test_toggle_reject_deletes_selection(self, customer_client, event_with_customer, photo, customer):
+    def test_toggle_reject_deletes_selection(
+        self, customer_client, event_with_customer, photo, customer
+    ):
         Selection.objects.create(photo=photo, customer=customer, choice="digital")
         url = reverse("toggle_selection", args=[photo.pk])
         resp = customer_client.post(
-            url, {"choice": "reject"}, HTTP_HX_REQUEST="true",
+            url,
+            {"choice": "reject"},
+            HTTP_HX_REQUEST="true",
         )
         assert resp.status_code == 200
         sel = Selection.objects.get(photo=photo, customer=customer)
@@ -92,13 +106,17 @@ class TestToggleSelectionView:
 
 
 class TestMySelectionsView:
-    def test_shows_selections_grouped_by_event(self, customer_client, event_with_customer, photo, customer):
+    def test_shows_selections_grouped_by_event(
+        self, customer_client, event_with_customer, photo, customer
+    ):
         Selection.objects.create(photo=photo, customer=customer, choice="digital")
         resp = customer_client.get(reverse("my_selections"))
         assert resp.status_code == 200
         assert event_with_customer.name in resp.content.decode()
 
-    def test_filter_by_event(self, customer_client, event_with_customer, photo, customer):
+    def test_filter_by_event(
+        self, customer_client, event_with_customer, photo, customer
+    ):
         Selection.objects.create(photo=photo, customer=customer, choice="digital")
         resp = customer_client.get(
             reverse("my_selections") + f"?event={event_with_customer.pk}"
@@ -107,7 +125,9 @@ class TestMySelectionsView:
 
 
 class TestSelectionInvoiceView:
-    def test_creates_invoice(self, customer_client, event_with_customer, photo, customer, order):
+    def test_creates_invoice(
+        self, customer_client, event_with_customer, photo, customer, order
+    ):
         Selection.objects.create(photo=photo, customer=customer, choice="digital")
         resp = customer_client.get(
             reverse("selection_invoice", args=[event_with_customer.pk])
@@ -115,10 +135,14 @@ class TestSelectionInvoiceView:
         assert resp.status_code == 200
         assert Invoice.objects.filter(order=order).exists()
 
-    def test_invoice_contains_line_items(self, customer_client, event_with_customer, photos, customer, order):
+    def test_invoice_contains_line_items(
+        self, customer_client, event_with_customer, photos, customer, order
+    ):
         # Create a mix of selections
         Selection.objects.create(photo=photos[0], customer=customer, choice="digital")
-        Selection.objects.create(photo=photos[1], customer=customer, choice="both", print_size="5x7")
+        Selection.objects.create(
+            photo=photos[1], customer=customer, choice="both", print_size="5x7"
+        )
         resp = customer_client.get(
             reverse("selection_invoice", args=[event_with_customer.pk])
         )
@@ -127,11 +151,17 @@ class TestSelectionInvoiceView:
         # Photography + 1 print item + 1 digital bundle = 3 line items
         assert invoice.line_items.count() == 3
 
-    def test_invoice_calculates_totals(self, customer_client, event_with_customer, photo, customer, order, photographer_user):
+    def test_invoice_calculates_totals(
+        self,
+        customer_client,
+        event_with_customer,
+        photo,
+        customer,
+        order,
+        photographer_user,
+    ):
         Selection.objects.create(photo=photo, customer=customer, choice="digital")
-        customer_client.get(
-            reverse("selection_invoice", args=[event_with_customer.pk])
-        )
+        customer_client.get(reverse("selection_invoice", args=[event_with_customer.pk]))
         invoice = Invoice.objects.get(order=order)
         # photographer_hours=2, rate=150 → subtotal=300
         assert invoice.subtotal == Decimal("300.00")
@@ -145,7 +175,9 @@ class TestSelectionInvoiceView:
         )
         assert resp.status_code == 302
 
-    def test_photographer_can_view_invoice(self, photographer_client, event_with_customer, photo, customer, order):
+    def test_photographer_can_view_invoice(
+        self, photographer_client, event_with_customer, photo, customer, order
+    ):
         Selection.objects.create(photo=photo, customer=customer, choice="digital")
         resp = photographer_client.get(
             reverse("photographer_invoice", args=[event_with_customer.pk, customer.pk])
@@ -155,14 +187,18 @@ class TestSelectionInvoiceView:
 
 
 class TestCustomerDownloadView:
-    def test_download_blocked_when_unpaid(self, customer_client, event_with_customer, order):
+    def test_download_blocked_when_unpaid(
+        self, customer_client, event_with_customer, order
+    ):
         resp = customer_client.get(
             reverse("customer_download", args=[event_with_customer.pk])
         )
         # Should redirect or show error
         assert resp.status_code in (302, 403, 404)
 
-    def test_download_blocked_when_expired(self, customer_client, event_with_customer, paid_order):
+    def test_download_blocked_when_expired(
+        self, customer_client, event_with_customer, paid_order
+    ):
         paid_order.paid_at = timezone.now() - datetime.timedelta(days=31)
         paid_order.save()
         resp = customer_client.get(
@@ -179,7 +215,9 @@ class TestShareLinkViews:
         assert resp.status_code == 302
         assert ShareLink.objects.filter(order=paid_order).exists()
 
-    def test_create_replaces_old_link(self, customer_client, event_with_customer, paid_order):
+    def test_create_replaces_old_link(
+        self, customer_client, event_with_customer, paid_order
+    ):
         ShareLink.objects.create(order=paid_order, code="OLDONE")
         resp = customer_client.post(
             reverse("create_share_link", args=[event_with_customer.pk])
@@ -188,7 +226,9 @@ class TestShareLinkViews:
         assert not ShareLink.objects.filter(code="OLDONE").exists()
         assert ShareLink.objects.filter(order=paid_order).count() == 1
 
-    def test_deactivate_share_link(self, customer_client, event_with_customer, paid_order):
+    def test_deactivate_share_link(
+        self, customer_client, event_with_customer, paid_order
+    ):
         link = ShareLink.objects.create(order=paid_order, code="ABC123")
         resp = customer_client.post(
             reverse("deactivate_share_link", args=[event_with_customer.pk])

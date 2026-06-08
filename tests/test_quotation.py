@@ -1,4 +1,5 @@
 """Tests for Service, Quotation, and QuotationLineItem models and views."""
+
 import datetime
 from decimal import Decimal
 
@@ -156,7 +157,9 @@ class TestQuotationAccept:
         assert order.photographer_hours == Decimal("3")
         assert order.photographer_rate == Decimal("150.00")
 
-    def test_accept_sets_status_and_timestamp(self, quotation_with_items, photographer_user):
+    def test_accept_sets_status_and_timestamp(
+        self, quotation_with_items, photographer_user
+    ):
         quotation = quotation_with_items
         quotation.accept(by="customer")
         quotation.refresh_from_db()
@@ -164,10 +167,13 @@ class TestQuotationAccept:
         assert quotation.accepted_at is not None
         assert quotation.accepted_by == "customer"
 
-    def test_accept_updates_existing_order(self, quotation_with_items, customer, event_with_customer):
+    def test_accept_updates_existing_order(
+        self, quotation_with_items, customer, event_with_customer
+    ):
         # Pre-create order
         existing_order = Order.objects.create(
-            event=event_with_customer, customer=customer,
+            event=event_with_customer,
+            customer=customer,
         )
         order = quotation_with_items.accept(by="photographer")
         assert order.pk == existing_order.pk
@@ -187,7 +193,9 @@ class TestQuotationTotals:
         # total = subtotal - deposit + tax = 477.50 - 100 + 62.075
         # DB rounds to 2 decimal places
         expected_tax = Decimal("477.50") * Decimal("13") / Decimal("100")
-        expected_total = (Decimal("477.50") - Decimal("100") + expected_tax).quantize(Decimal("0.01"))
+        expected_total = (Decimal("477.50") - Decimal("100") + expected_tax).quantize(
+            Decimal("0.01")
+        )
         assert quotation_with_items.total == expected_total
 
 
@@ -198,14 +206,17 @@ class TestServiceViews:
         assert b"Photography" in resp.content
 
     def test_add_service(self, photographer_client):
-        resp = photographer_client.post(reverse("service_add"), {
-            "name": "Image Processing",
-            "description": "Post-processing",
-            "unit_type": "per_image",
-            "default_rate": "2.50",
-            "sort_order": "1",
-            "is_active": "on",
-        })
+        resp = photographer_client.post(
+            reverse("service_add"),
+            {
+                "name": "Image Processing",
+                "description": "Post-processing",
+                "unit_type": "per_image",
+                "default_rate": "2.50",
+                "sort_order": "1",
+                "is_active": "on",
+            },
+        )
         assert resp.status_code == 302
         assert Service.objects.filter(name="Image Processing").exists()
 
@@ -259,9 +270,7 @@ class TestQuotationViews:
             },
         )
         assert resp.status_code == 302
-        quotation = Quotation.objects.get(
-            event=event_with_customer, customer=customer
-        )
+        quotation = Quotation.objects.get(event=event_with_customer, customer=customer)
         assert quotation.deposit_amount == Decimal("50.00")
         assert quotation.line_items.count() == 1
         item = quotation.line_items.first()
@@ -280,9 +289,7 @@ class TestQuotationViews:
         assert resp.status_code == 200
         assert quotation_with_items.quote_number.encode() in resp.content
 
-    def test_photographer_accept(
-        self, photographer_client, quotation_with_items
-    ):
+    def test_photographer_accept(self, photographer_client, quotation_with_items):
         resp = photographer_client.post(
             reverse(
                 "quotation_accept",
@@ -296,9 +303,7 @@ class TestQuotationViews:
             event=quotation_with_items.event, customer=quotation_with_items.customer
         ).exists()
 
-    def test_customer_view_quotation(
-        self, customer_client, quotation_with_items
-    ):
+    def test_customer_view_quotation(self, customer_client, quotation_with_items):
         resp = customer_client.get(
             reverse("customer_quotation_view", args=[quotation_with_items.event.pk])
         )
@@ -325,7 +330,9 @@ class TestQuotationViews:
         quotation_with_items.refresh_from_db()
         assert quotation_with_items.status == Quotation.Status.DECLINED
 
-    def test_customer_cannot_accept_expired(self, customer_client, quotation_with_items):
+    def test_customer_cannot_accept_expired(
+        self, customer_client, quotation_with_items
+    ):
         quotation_with_items.status = Quotation.Status.SENT
         quotation_with_items.valid_until = datetime.date(2020, 1, 1)
         quotation_with_items.save(update_fields=["status", "valid_until"])

@@ -38,19 +38,25 @@ class PhotographerProfile(models.Model):
     email = models.EmailField(blank=True, default="")
     address = models.TextField(blank=True, default="", help_text="Business address.")
     payment_instructions = models.TextField(
-        blank=True, default="",
+        blank=True,
+        default="",
         help_text="Payment details shown on invoices (bank, Venmo, etc.).",
     )
     payment_terms = models.CharField(
-        max_length=100, blank=True, default="Due within 30 days",
+        max_length=100,
+        blank=True,
+        default="Due within 30 days",
         help_text="e.g. 'Due within 30 days', 'Due on receipt'.",
     )
     tax_rate = models.DecimalField(
-        max_digits=5, decimal_places=2, default=0,
+        max_digits=5,
+        decimal_places=2,
+        default=0,
         help_text="Tax percentage (e.g. 13.00 for 13%).",
     )
     invoice_notes = models.TextField(
-        blank=True, default="",
+        blank=True,
+        default="",
         help_text="Default terms/notes shown at the bottom of invoices.",
     )
     created = models.DateTimeField(auto_now_add=True)
@@ -75,24 +81,35 @@ class Quotation(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     quote_number = models.CharField(
-        max_length=20, unique=True, blank=True,
+        max_length=20,
+        unique=True,
+        blank=True,
         help_text="Auto-generated quote number.",
     )
     event = models.ForeignKey(
-        "gallery.Event", on_delete=models.CASCADE, related_name="quotations",
+        "gallery.Event",
+        on_delete=models.CASCADE,
+        related_name="quotations",
     )
     customer = models.ForeignKey(
-        Customer, on_delete=models.CASCADE, related_name="quotations",
+        Customer,
+        on_delete=models.CASCADE,
+        related_name="quotations",
     )
     status = models.CharField(
-        max_length=20, choices=Status.choices, default=Status.DRAFT,
+        max_length=20,
+        choices=Status.choices,
+        default=Status.DRAFT,
     )
     valid_until = models.DateField(
-        null=True, blank=True,
+        null=True,
+        blank=True,
         help_text="Quote expires after this date.",
     )
     deposit_amount = models.DecimalField(
-        max_digits=10, decimal_places=2, default=0,
+        max_digits=10,
+        decimal_places=2,
+        default=0,
         help_text="Deposit required before the shoot.",
     )
     subtotal = models.DecimalField(max_digits=10, decimal_places=2, default=0)
@@ -102,7 +119,9 @@ class Quotation(models.Model):
     notes = models.TextField(blank=True, default="")
     accepted_at = models.DateTimeField(null=True, blank=True)
     accepted_by = models.CharField(
-        max_length=50, blank=True, default="",
+        max_length=50,
+        blank=True,
+        default="",
         help_text="Who accepted: 'customer' or 'photographer'.",
     )
     created = models.DateTimeField(auto_now_add=True)
@@ -117,7 +136,9 @@ class Quotation(models.Model):
 
     def save(self, *args, **kwargs) -> None:
         if not self.quote_number:
-            last = Quotation.objects.exclude(quote_number="").order_by("-created").first()
+            last = (
+                Quotation.objects.exclude(quote_number="").order_by("-created").first()
+            )
             next_num = 1
             if last and last.quote_number:
                 try:
@@ -166,20 +187,30 @@ class Quotation(models.Model):
             order.photographer_hours = hours
             order.photographer_rate = rate
             order.deposit_amount = self.deposit_amount
-            order.save(update_fields=[
-                "quotation", "photographer_hours", "photographer_rate",
-                "deposit_amount", "modified",
-            ])
+            order.save(
+                update_fields=[
+                    "quotation",
+                    "photographer_hours",
+                    "photographer_rate",
+                    "deposit_amount",
+                    "modified",
+                ]
+            )
         return order
 
 
 class QuotationLineItem(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     quotation = models.ForeignKey(
-        Quotation, on_delete=models.CASCADE, related_name="line_items",
+        Quotation,
+        on_delete=models.CASCADE,
+        related_name="line_items",
     )
     service = models.ForeignKey(
-        "gallery.Service", on_delete=models.SET_NULL, null=True, blank=True,
+        "gallery.Service",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name="quotation_items",
     )
     sort_order = models.PositiveIntegerField(default=0)
@@ -204,37 +235,55 @@ class Order(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     ref = models.CharField(
-        max_length=20, unique=True, blank=True,
+        max_length=20,
+        unique=True,
+        blank=True,
         help_text="Short reference code for this order.",
     )
     quotation = models.OneToOneField(
-        Quotation, on_delete=models.SET_NULL, null=True, blank=True,
+        Quotation,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name="order",
     )
     event = models.ForeignKey(
-        "gallery.Event", on_delete=models.CASCADE, related_name="orders",
+        "gallery.Event",
+        on_delete=models.CASCADE,
+        related_name="orders",
     )
     customer = models.ForeignKey(
-        Customer, on_delete=models.CASCADE, related_name="orders",
+        Customer,
+        on_delete=models.CASCADE,
+        related_name="orders",
     )
     status = models.CharField(
-        max_length=20, choices=Status.choices, default=Status.PENDING_PAYMENT,
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING_PAYMENT,
     )
     photographer_hours = models.DecimalField(
-        max_digits=5, decimal_places=2, default=0,
+        max_digits=5,
+        decimal_places=2,
+        default=0,
         help_text="Hours of photography for this order.",
     )
     photographer_rate = models.DecimalField(
-        max_digits=7, decimal_places=2, default=0,
+        max_digits=7,
+        decimal_places=2,
+        default=0,
         help_text="Hourly rate for photography.",
     )
     deposit_amount = models.DecimalField(
-        max_digits=10, decimal_places=2, default=0,
+        max_digits=10,
+        decimal_places=2,
+        default=0,
         help_text="Deposit requested before the shoot.",
     )
     download_count = models.PositiveIntegerField(default=0)
     paid_at = models.DateTimeField(
-        null=True, blank=True,
+        null=True,
+        blank=True,
         help_text="When payment was received. Download link expires 30 days after this.",
     )
     notes = models.TextField(blank=True, default="")
@@ -265,7 +314,11 @@ class Order(models.Model):
 
     @property
     def is_paid(self) -> bool:
-        return self.status in (self.Status.PAID, self.Status.IN_PROGRESS, self.Status.DELIVERED)
+        return self.status in (
+            self.Status.PAID,
+            self.Status.IN_PROGRESS,
+            self.Status.DELIVERED,
+        )
 
     @property
     def download_expires_at(self):
@@ -292,21 +345,29 @@ class Invoice(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     invoice_number = models.CharField(
-        max_length=20, unique=True, blank=True,
+        max_length=20,
+        unique=True,
+        blank=True,
         help_text="Auto-generated invoice number.",
     )
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="invoices")
     status = models.CharField(
-        max_length=20, choices=Status.choices, default=Status.DRAFT,
+        max_length=20,
+        choices=Status.choices,
+        default=Status.DRAFT,
     )
     issued_at = models.DateTimeField(null=True, blank=True)
     subtotal = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     deposit = models.DecimalField(
-        max_digits=10, decimal_places=2, default=0,
+        max_digits=10,
+        decimal_places=2,
+        default=0,
         help_text="Deposit amount credited from the order.",
     )
     tax_rate = models.DecimalField(
-        max_digits=5, decimal_places=2, default=0,
+        max_digits=5,
+        decimal_places=2,
+        default=0,
         help_text="Tax percentage at time of invoice.",
     )
     tax_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
@@ -323,7 +384,9 @@ class Invoice(models.Model):
 
     def save(self, *args, **kwargs) -> None:
         if not self.invoice_number:
-            last = Invoice.objects.exclude(invoice_number="").order_by("-created").first()
+            last = (
+                Invoice.objects.exclude(invoice_number="").order_by("-created").first()
+            )
             next_num = 1
             if last and last.invoice_number:
                 try:
@@ -338,7 +401,9 @@ class Invoice(models.Model):
 
 class InvoiceLineItem(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE, related_name="line_items")
+    invoice = models.ForeignKey(
+        Invoice, on_delete=models.CASCADE, related_name="line_items"
+    )
     sort_order = models.PositiveIntegerField(default=0)
     description = models.CharField(max_length=300)
     filename = models.CharField(max_length=300, blank=True, default="")
@@ -363,15 +428,22 @@ class Payment(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     invoice = models.ForeignKey(
-        Invoice, on_delete=models.CASCADE, related_name="payments",
-        null=True, blank=True,
+        Invoice,
+        on_delete=models.CASCADE,
+        related_name="payments",
+        null=True,
+        blank=True,
     )
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     method = models.CharField(
-        max_length=20, choices=Method.choices, default=Method.ETRANSFER,
+        max_length=20,
+        choices=Method.choices,
+        default=Method.ETRANSFER,
     )
     reference = models.CharField(
-        max_length=200, blank=True, default="",
+        max_length=200,
+        blank=True,
+        default="",
         help_text="Transaction ID, cheque number, etc.",
     )
     notes = models.TextField(blank=True, default="")

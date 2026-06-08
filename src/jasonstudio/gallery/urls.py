@@ -37,18 +37,44 @@ urlpatterns = [
     ),
     path("photo/<str:photo_id>/caption/", views.update_caption, name="update_caption"),
     path("photo/<str:photo_id>/delete/", views.delete_photo, name="delete_photo"),
-    path("photo/<str:photo_id>/select/", views.toggle_selection, name="toggle_selection"),
+    path(
+        "photo/<str:photo_id>/select/", views.toggle_selection, name="toggle_selection"
+    ),
     path("my-selections/", views.my_selections, name="my_selections"),
-    path("my-selections/<str:event_id>/invoice/", views.selection_invoice, name="selection_invoice"),
-    path("my-selections/<str:event_id>/download/", views.customer_download, name="customer_download"),
-    path("my-selections/<str:event_id>/share/", views.create_share_link, name="create_share_link"),
-    path("my-selections/<str:event_id>/share/deactivate/", views.deactivate_share_link, name="deactivate_share_link"),
+    path(
+        "my-selections/<str:event_id>/invoice/",
+        views.selection_invoice,
+        name="selection_invoice",
+    ),
+    path(
+        "my-selections/<str:event_id>/download/",
+        views.customer_download,
+        name="customer_download",
+    ),
+    path(
+        "my-selections/<str:event_id>/share/",
+        views.create_share_link,
+        name="create_share_link",
+    ),
+    path(
+        "my-selections/<str:event_id>/share/deactivate/",
+        views.deactivate_share_link,
+        name="deactivate_share_link",
+    ),
     path("shared/<str:code>/", views.shared_download_page, name="shared_download_page"),
-    path("shared/<str:code>/download/", views.shared_download_file, name="shared_download_file"),
+    path(
+        "shared/<str:code>/download/",
+        views.shared_download_file,
+        name="shared_download_file",
+    ),
     # Services
     path("photographer/services/", views.service_list, name="service_list"),
     path("photographer/services/add/", views.service_edit, name="service_add"),
-    path("photographer/services/<str:service_id>/edit/", views.service_edit, name="service_edit"),
+    path(
+        "photographer/services/<str:service_id>/edit/",
+        views.service_edit,
+        name="service_edit",
+    ),
     # Quotations
     path(
         "photographer/event/<str:event_id>/quote/<str:customer_id>/",

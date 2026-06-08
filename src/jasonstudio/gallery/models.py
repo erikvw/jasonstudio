@@ -25,7 +25,9 @@ class Event(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     customers = models.ManyToManyField(
-        Customer, related_name="events", blank=True,
+        Customer,
+        related_name="events",
+        blank=True,
     )
     name = models.CharField(max_length=200)
     date = models.DateField()
@@ -53,19 +55,27 @@ class Photo(models.Model):
     event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="photos")
     original = models.ImageField(upload_to=photo_upload_path, max_length=300)
     thumbnail = models.ImageField(
-        upload_to=thumbnail_upload_path, blank=True, default="",
+        upload_to=thumbnail_upload_path,
+        blank=True,
+        default="",
         max_length=300,
         help_text="Resized watermarked version for gallery browsing.",
     )
     watermarked = models.ImageField(
-        upload_to=watermarked_upload_path, blank=True, default="",
+        upload_to=watermarked_upload_path,
+        blank=True,
+        default="",
         max_length=300,
         help_text="Full-resolution watermarked version.",
     )
     title = models.CharField(max_length=200, blank=True, default="")
-    caption = models.TextField(blank=True, default="", help_text="Custom legend by photographer.")
+    caption = models.TextField(
+        blank=True, default="", help_text="Custom legend by photographer."
+    )
     filename = models.CharField(max_length=300, blank=True, default="")
-    file_size = models.PositiveIntegerField(default=0, help_text="Original file size in bytes.")
+    file_size = models.PositiveIntegerField(
+        default=0, help_text="Original file size in bytes."
+    )
     image_width = models.PositiveIntegerField(default=0)
     image_height = models.PositiveIntegerField(default=0)
     camera_model = models.CharField(max_length=200, blank=True, default="")
@@ -106,7 +116,9 @@ class Selection(models.Model):
     customer = models.ForeignKey(
         Customer, on_delete=models.CASCADE, related_name="selections"
     )
-    choice = models.CharField(max_length=20, choices=Choice.choices, default=Choice.DIGITAL)
+    choice = models.CharField(
+        max_length=20, choices=Choice.choices, default=Choice.DIGITAL
+    )
     print_size = models.CharField(
         max_length=10,
         choices=PrintSize.choices,
@@ -156,7 +168,9 @@ class Service(models.Model):
 class ShareLink(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     order = models.OneToOneField(
-        "accounts.Order", on_delete=models.CASCADE, related_name="share_link",
+        "accounts.Order",
+        on_delete=models.CASCADE,
+        related_name="share_link",
     )
     code = models.CharField(max_length=8, unique=True)
     is_active = models.BooleanField(default=True)

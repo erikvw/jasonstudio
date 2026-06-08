@@ -11,8 +11,11 @@ from jasonstudio.gallery.models import Event, Photo
 @pytest.fixture
 def photographer_user(db) -> User:
     user = User.objects.create_user(
-        username="photographer", password="testpass123", email="photo@example.com",
-        first_name="Jason", last_name="Photographer",
+        username="photographer",
+        password="testpass123",
+        email="photo@example.com",
+        first_name="Jason",
+        last_name="Photographer",
     )
     PhotographerProfile.objects.create(
         user=user,
@@ -29,8 +32,11 @@ def photographer_user(db) -> User:
 @pytest.fixture
 def customer_user(db) -> User:
     user = User.objects.create_user(
-        username="customer1", password="testpass123", email="customer@example.com",
-        first_name="Jane", last_name="Doe",
+        username="customer1",
+        password="testpass123",
+        email="customer@example.com",
+        first_name="Jane",
+        last_name="Doe",
     )
     Customer.objects.create(user=user, phone="555-0200", company_name="Doe Inc")
     return user
