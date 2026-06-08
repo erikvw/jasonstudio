@@ -6,8 +6,8 @@ from django.test import Client
 from django.urls import reverse
 from django.utils import timezone
 
-from accounts.models import Invoice
-from gallery.models import (
+from jasonstudio.accounts.models import Invoice
+from jasonstudio.gallery.models import (
     Event,
     Selection,
     ShareLink,

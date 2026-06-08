@@ -3,8 +3,8 @@ from django.contrib.auth.models import User
 from django.test import Client
 from django.urls import reverse
 
-from accounts.models import Customer
-from gallery.models import Selection
+from jasonstudio.accounts.models import Customer
+from jasonstudio.gallery.models import Selection
 
 
 @pytest.fixture

@@ -4,8 +4,8 @@ from decimal import Decimal
 import pytest
 from django.contrib.auth.models import User
 
-from accounts.models import Customer, Order, PhotographerProfile
-from gallery.models import Event, Photo
+from jasonstudio.accounts.models import Customer, Order, PhotographerProfile
+from jasonstudio.gallery.models import Event, Photo
 
 
 @pytest.fixture

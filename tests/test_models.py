@@ -4,8 +4,8 @@ from decimal import Decimal
 import pytest
 from django.utils import timezone
 
-from accounts.models import Invoice, InvoiceLineItem, Order, Payment
-from gallery.models import (
+from jasonstudio.accounts.models import Invoice, InvoiceLineItem, Order, Payment
+from jasonstudio.gallery.models import (
     Event,
     Selection,
     ShareLink,
@@ -22,7 +22,7 @@ class TestOrderModel:
         # Create another event/customer for a second order
         from django.contrib.auth.models import User
 
-        from accounts.models import Customer as CustomerModel
+        from jasonstudio.accounts.models import Customer as CustomerModel
 
         user2 = User.objects.create_user(username="cust2", password="pass")
         c2 = CustomerModel.objects.create(user=user2)

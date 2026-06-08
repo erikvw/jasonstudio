@@ -9,7 +9,7 @@ from django.views.decorators.http import require_POST
 
 from PIL import Image, ImageOps
 
-from accounts.models import (
+from jasonstudio.accounts.models import (
     Invoice,
     InvoiceLineItem,
     Order,
@@ -187,7 +187,7 @@ def upload_photos(request: HttpRequest, event_id: str) -> HttpResponse:
 
         # Default all uploaded photos to "Digital" for customers with an order
         if new_photos:
-            from accounts.models import Customer
+            from jasonstudio.accounts.models import Customer
             order_customers = Customer.objects.filter(
                 orders__event=event,
             ).distinct()
@@ -475,7 +475,7 @@ def _build_invoice(order: Order) -> Invoice:
     """Create or update an Invoice and its line items from the current order state."""
     from decimal import Decimal
 
-    from accounts.models import PhotographerProfile
+    from jasonstudio.accounts.models import PhotographerProfile
 
     event = order.event
     customer = order.customer
@@ -559,7 +559,7 @@ def selection_invoice(request: HttpRequest, event_id: str) -> HttpResponse:
     if not customer:
         return redirect("home")
 
-    from accounts.models import PhotographerProfile
+    from jasonstudio.accounts.models import PhotographerProfile
 
     event = get_object_or_404(Event, pk=event_id, customers=customer)
     order = Order.objects.filter(event=event, customer=customer).first()
@@ -592,8 +592,8 @@ def photographer_invoice(
     if not _is_photographer(request.user):
         return redirect("home")
 
-    from accounts.models import Customer as CustomerModel
-    from accounts.models import PhotographerProfile
+    from jasonstudio.accounts.models import Customer as CustomerModel
+    from jasonstudio.accounts.models import PhotographerProfile
 
     event = get_object_or_404(Event, pk=event_id)
     customer = get_object_or_404(CustomerModel, pk=customer_id)
@@ -664,7 +664,7 @@ def customer_order_detail(
         return redirect("home")
 
     event = get_object_or_404(Event, pk=event_id)
-    from accounts.models import Customer
+    from jasonstudio.accounts.models import Customer
 
     customer = get_object_or_404(Customer, pk=customer_id)
     order = get_object_or_404(Order, event=event, customer=customer)
@@ -708,7 +708,7 @@ def update_order_status(
         return redirect("home")
 
     event = get_object_or_404(Event, pk=event_id)
-    from accounts.models import Customer
+    from jasonstudio.accounts.models import Customer
 
     customer = get_object_or_404(Customer, pk=customer_id)
     order = get_object_or_404(Order, event=event, customer=customer)
@@ -765,7 +765,7 @@ def download_zip(
         return redirect("home")
 
     event = get_object_or_404(Event, pk=event_id)
-    from accounts.models import Customer
+    from jasonstudio.accounts.models import Customer
 
     customer = get_object_or_404(Customer, pk=customer_id)
     order = get_object_or_404(Order, event=event, customer=customer)
@@ -911,7 +911,7 @@ def _build_quotation_totals(quotation: Quotation) -> None:
     """Recalculate quotation subtotal, tax, and total from its line items."""
     from decimal import Decimal
 
-    from accounts.models import PhotographerProfile
+    from jasonstudio.accounts.models import PhotographerProfile
 
     subtotal = sum(
         (item.price for item in quotation.line_items.all()), Decimal("0")
@@ -944,7 +944,7 @@ def quotation_edit(
 
     from decimal import Decimal, InvalidOperation
 
-    from accounts.models import Customer as CustomerModel
+    from jasonstudio.accounts.models import Customer as CustomerModel
 
     event = get_object_or_404(Event, pk=event_id)
     customer = get_object_or_404(CustomerModel, pk=customer_id)
@@ -1033,8 +1033,8 @@ def quotation_view(
     if not _is_photographer(request.user):
         return redirect("home")
 
-    from accounts.models import Customer as CustomerModel
-    from accounts.models import PhotographerProfile
+    from jasonstudio.accounts.models import Customer as CustomerModel
+    from jasonstudio.accounts.models import PhotographerProfile
 
     event = get_object_or_404(Event, pk=event_id)
     customer = get_object_or_404(CustomerModel, pk=customer_id)
@@ -1060,7 +1060,7 @@ def quotation_accept(
     if not _is_photographer(request.user):
         return redirect("home")
 
-    from accounts.models import Customer as CustomerModel
+    from jasonstudio.accounts.models import Customer as CustomerModel
 
     event = get_object_or_404(Event, pk=event_id)
     customer = get_object_or_404(CustomerModel, pk=customer_id)
@@ -1080,7 +1080,7 @@ def customer_quotation_view(request: HttpRequest, event_id: str) -> HttpResponse
     if not customer:
         return redirect("home")
 
-    from accounts.models import PhotographerProfile
+    from jasonstudio.accounts.models import PhotographerProfile
 
     event = get_object_or_404(Event, pk=event_id, customers=customer)
     quotation = get_object_or_404(Quotation, event=event, customer=customer)
@@ -1169,7 +1169,7 @@ def deactivate_share_link(request: HttpRequest, event_id: str) -> HttpResponse:
         order = get_object_or_404(Order, event=event, customer=customer)
     elif is_photographer:
         event = get_object_or_404(Event, pk=event_id)
-        from accounts.models import Customer as CustomerModel
+        from jasonstudio.accounts.models import Customer as CustomerModel
 
         customer_id = request.POST.get("customer_id")
         cust = get_object_or_404(CustomerModel, pk=customer_id)

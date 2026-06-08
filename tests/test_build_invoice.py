@@ -1,9 +1,9 @@
 """Tests for the _build_invoice helper function."""
 from decimal import Decimal
 
-from accounts.models import Invoice
-from gallery.models import Selection
-from gallery.views import _build_invoice
+from jasonstudio.accounts.models import Invoice
+from jasonstudio.gallery.models import Selection
+from jasonstudio.gallery.views import _build_invoice
 
 
 class TestBuildInvoice:
@@ -81,7 +81,7 @@ class TestBuildInvoice:
         assert invoice.line_items.first().description == "Photography"
 
     def test_zero_hour_photography_still_shown(self, event_with_customer, customer):
-        from accounts.models import Order
+        from jasonstudio.accounts.models import Order
 
         order = Order.objects.create(
             event=event_with_customer,

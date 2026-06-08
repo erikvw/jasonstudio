@@ -1,0 +1,112 @@
+---
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Set up Python
+        run: uv python install 3.14
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Ruff check
+        run: uv run --dev ruff check src/ tests/
+
+      - name: Ruff format check
+        run: uv run --dev ruff format --check src/ tests/
+
+  tests:
+    runs-on: ubuntu-latest
+    needs: lint
+
+    strategy:
+      fail-fast: false
+      matrix:
+        django-version: ["6.0", "dev"]
+        database: [postgres, mysql]
+
+    services:
+      postgres:
+        image: ${{ matrix.database == 'postgres' && 'postgres:17' || '' }}
+        env:
+          POSTGRES_DB: jasonstudio_test
+          POSTGRES_USER: jasonstudio
+          POSTGRES_PASSWORD: testpass
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      mysql:
+        image: ${{ matrix.database == 'mysql' && 'mysql:8.4' || '' }}
+        env:
+          MYSQL_DATABASE: jasonstudio_test
+          MYSQL_USER: jasonstudio
+          MYSQL_PASSWORD: testpass
+          MYSQL_ROOT_PASSWORD: rootpass
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DJANGO_SETTINGS_MODULE: jasonstudio.settings.ci
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Set up Python
+        run: uv python install 3.14
+
+      - name: Install system deps (MySQL client)
+        if: matrix.database == 'mysql'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config default-libmysqlclient-dev
+
+      - name: Install dependencies
+        run: uv sync --dev --extra mysql
+
+      - name: Install Django dev
+        if: matrix.django-version == 'dev'
+        run: >-
+          uv pip install
+          git+https://github.com/django/django.git@main#egg=django
+
+      - name: Write .env for PostgreSQL
+        if: matrix.database == 'postgres'
+        run: |
+          echo 'DATABASE_URL=postgres://jasonstudio:testpass@127.0.0.1:5432/jasonstudio_test' > .env
+
+      - name: Write .env for MySQL
+        if: matrix.database == 'mysql'
+        run: |
+          echo 'DATABASE_URL=mysql://jasonstudio:testpass@127.0.0.1:3306/jasonstudio_test' > .env
+
+      - name: Run migrations
+        run: uv run --dev python manage.py migrate --no-input
+
+      - name: Run tests
+        run: uv run --dev pytest tests/ -x -q

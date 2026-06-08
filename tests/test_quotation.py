@@ -5,8 +5,8 @@ from decimal import Decimal
 import pytest
 from django.test import Client
 from django.urls import reverse
-from accounts.models import Order, Quotation, QuotationLineItem
-from gallery.models import Service
+from jasonstudio.accounts.models import Order, Quotation, QuotationLineItem
+from jasonstudio.gallery.models import Service
 
 
 @pytest.fixture
@@ -107,8 +107,8 @@ class TestQuotationModel:
     def test_quote_number_sequential(self, event_with_customer, customer, db):
         from django.contrib.auth.models import User
 
-        from accounts.models import Customer as CustomerModel
-        from gallery.models import Event
+        from jasonstudio.accounts.models import Customer as CustomerModel
+        from jasonstudio.gallery.models import Event
 
         q1 = Quotation.objects.create(event=event_with_customer, customer=customer)
         user2 = User.objects.create_user(username="cust2q", password="pass")
@@ -176,7 +176,7 @@ class TestQuotationAccept:
 
 class TestQuotationTotals:
     def test_build_totals(self, quotation_with_items, photographer_user):
-        from gallery.views import _build_quotation_totals
+        from jasonstudio.gallery.views import _build_quotation_totals
 
         _build_quotation_totals(quotation_with_items)
         quotation_with_items.refresh_from_db()

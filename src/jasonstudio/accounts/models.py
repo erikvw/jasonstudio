@@ -135,7 +135,7 @@ class Quotation(models.Model):
 
     def accept(self, by: str = "customer") -> "Order":
         """Accept the quotation and create an Order from it."""
-        from gallery.models import Service
+        from jasonstudio.gallery.models import Service
 
         self.status = self.Status.ACCEPTED
         self.accepted_at = timezone.now()

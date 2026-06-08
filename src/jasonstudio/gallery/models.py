@@ -2,7 +2,7 @@ import uuid
 
 from django.db import models
 
-from accounts.models import Customer
+from jasonstudio.accounts.models import Customer
 
 
 def photo_upload_path(instance: "Photo", filename: str) -> str:
