@@ -6,12 +6,15 @@ readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
     "django>=6.0.6",
+    "django-environ>=0.13.0",
     "django-htmx>=1.27.0",
     "django-storages>=1.14.6",
     "pillow>=12.2.0",
+    "psycopg>=3.3.4",
 ]
 
 [project.optional-dependencies]
+mysql = ["mysqlclient>=2.2"]
 docs = [
     "furo>=2025.12.19",
     "myst-parser>=5.1.0",
@@ -26,12 +29,17 @@ dev = [
     "myst-parser>=5.1.0",
     "pytest>=9.0.3",
     "pytest-django>=4.12.0",
+    "ruff>=0.13.0",
     "sphinx>=9.1.0",
     "sphinx-design>=0.7.0",
     "sphinx-inline-tabs>=2025.12.21.14",
 ]
 
+[build-system]
+requires = ["uv_build>=0.7.19,<0.8"]
+build-backend = "uv_build"
+
 [tool.pytest.ini_options]
-DJANGO_SETTINGS_MODULE = "jasonstudio.settings"
-pythonpath = ["."]
+DJANGO_SETTINGS_MODULE = "jasonstudio.settings.debug"
+pythonpath = ["src"]
 testpaths = ["tests"]

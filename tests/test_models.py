@@ -4,8 +4,8 @@ from decimal import Decimal
 import pytest
 from django.utils import timezone
 
-from accounts.models import Invoice, InvoiceLineItem, Order, Payment
-from gallery.models import (
+from jasonstudio.accounts.models import Invoice, InvoiceLineItem, Order, Payment
+from jasonstudio.gallery.models import (
     Event,
     Selection,
     ShareLink,
@@ -22,7 +22,7 @@ class TestOrderModel:
         # Create another event/customer for a second order
         from django.contrib.auth.models import User
 
-        from accounts.models import Customer as CustomerModel
+        from jasonstudio.accounts.models import Customer as CustomerModel
 
         user2 = User.objects.create_user(username="cust2", password="pass")
         c2 = CustomerModel.objects.create(user=user2)
@@ -182,7 +182,9 @@ class TestPaymentModel:
     def test_payment_linked_to_invoice(self, order):
         invoice = Invoice.objects.create(order=order)
         payment = Payment.objects.create(
-            invoice=invoice, amount=Decimal("100.00"), method=Payment.Method.ETRANSFER,
+            invoice=invoice,
+            amount=Decimal("100.00"),
+            method=Payment.Method.ETRANSFER,
         )
         assert payment.invoice == invoice
         assert invoice.payments.count() == 1
@@ -190,7 +192,8 @@ class TestPaymentModel:
     def test_str_with_invoice(self, order):
         invoice = Invoice.objects.create(order=order)
         payment = Payment.objects.create(
-            invoice=invoice, amount=Decimal("50.00"),
+            invoice=invoice,
+            amount=Decimal("50.00"),
         )
         assert "$50.00" in str(payment)
         assert invoice.invoice_number in str(payment)

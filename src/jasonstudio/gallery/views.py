@@ -9,7 +9,7 @@ from django.views.decorators.http import require_POST
 
 from PIL import Image, ImageOps
 
-from accounts.models import (
+from jasonstudio.accounts.models import (
     Invoice,
     InvoiceLineItem,
     Order,
@@ -112,7 +112,9 @@ def event_gallery(request: HttpRequest, event_id: str) -> HttpResponse:
             "is_customer": customer is not None,
             "current_filter": filter_by,
             "filter_counts": filter_counts,
-            "total_count": len(all_photos) if isinstance(all_photos, list) else all_photos.count(),
+            "total_count": len(all_photos)
+            if isinstance(all_photos, list)
+            else all_photos.count(),
         },
     )
 
@@ -125,9 +127,16 @@ def upload_photos(request: HttpRequest, event_id: str) -> HttpResponse:
     event = get_object_or_404(Event, pk=event_id)
 
     if request.method == "POST":
-        allowed_types = {"image/jpeg", "image/png", "image/gif", "image/webp", "image/tiff"}
+        allowed_types = {
+            "image/jpeg",
+            "image/png",
+            "image/gif",
+            "image/webp",
+            "image/tiff",
+        }
         files = [
-            f for f in request.FILES.getlist("photos")
+            f
+            for f in request.FILES.getlist("photos")
             if f.content_type in allowed_types
         ]
         processed = 0
@@ -167,7 +176,9 @@ def upload_photos(request: HttpRequest, event_id: str) -> HttpResponse:
 
             f.seek(0)
             thumb_buffer = create_thumbnail(
-                BytesIO(f.read()), text=watermark_text, opacity=watermark_opacity,
+                BytesIO(f.read()),
+                text=watermark_text,
+                opacity=watermark_opacity,
             )
             photo.thumbnail.save(
                 f"thumb_{f.name}", ContentFile(thumb_buffer.read()), save=False
@@ -175,7 +186,9 @@ def upload_photos(request: HttpRequest, event_id: str) -> HttpResponse:
 
             f.seek(0)
             wm_buffer = apply_watermark(
-                BytesIO(f.read()), text=watermark_text, opacity=watermark_opacity,
+                BytesIO(f.read()),
+                text=watermark_text,
+                opacity=watermark_opacity,
             )
             photo.watermarked.save(
                 f"wm_{f.name}", ContentFile(wm_buffer.read()), save=False
@@ -187,7 +200,8 @@ def upload_photos(request: HttpRequest, event_id: str) -> HttpResponse:
 
         # Default all uploaded photos to "Digital" for customers with an order
         if new_photos:
-            from accounts.models import Customer
+            from jasonstudio.accounts.models import Customer
+
             order_customers = Customer.objects.filter(
                 orders__event=event,
             ).distinct()
@@ -202,14 +216,16 @@ def upload_photos(request: HttpRequest, event_id: str) -> HttpResponse:
                     for customer in order_customers
                 ]
                 Selection.objects.bulk_create(
-                    selections_to_create, ignore_conflicts=True,
+                    selections_to_create,
+                    ignore_conflicts=True,
                 )
 
         return JsonResponse({"processed": processed})
 
     photos = event.photos.all()
     return render(
-        request, "gallery/upload.html",
+        request,
+        "gallery/upload.html",
         {"event": event, "photos": photos, "is_photographer": True},
     )
 
@@ -249,17 +265,25 @@ def regenerate_thumbnails(request: HttpRequest, event_id: str) -> HttpResponse:
         filename = photo.filename or f"photo_{photo.pk}.jpg"
 
         thumb_buffer = create_thumbnail(
-            BytesIO(original_bytes), text=watermark_text, opacity=watermark_opacity,
+            BytesIO(original_bytes),
+            text=watermark_text,
+            opacity=watermark_opacity,
         )
         photo.thumbnail.save(
-            f"thumb_{filename}", ContentFile(thumb_buffer.read()), save=False,
+            f"thumb_{filename}",
+            ContentFile(thumb_buffer.read()),
+            save=False,
         )
 
         wm_buffer = apply_watermark(
-            BytesIO(original_bytes), text=watermark_text, opacity=watermark_opacity,
+            BytesIO(original_bytes),
+            text=watermark_text,
+            opacity=watermark_opacity,
         )
         photo.watermarked.save(
-            f"wm_{filename}", ContentFile(wm_buffer.read()), save=False,
+            f"wm_{filename}",
+            ContentFile(wm_buffer.read()),
+            save=False,
         )
 
         photo.save()
@@ -391,10 +415,14 @@ def toggle_selection(request: HttpRequest, photo_id: str) -> HttpResponse:
 
         # Render filter tabs + summary OOB
         tabs_html = render_to_string(
-            "gallery/partials/filter_tabs_oob.html", oob_context, request=request,
+            "gallery/partials/filter_tabs_oob.html",
+            oob_context,
+            request=request,
         )
         summary_html = render_to_string(
-            "gallery/partials/selection_summary_oob.html", oob_context, request=request,
+            "gallery/partials/selection_summary_oob.html",
+            oob_context,
+            request=request,
         )
 
         return HttpResponse(buttons_html + tabs_html + summary_html)
@@ -442,7 +470,9 @@ def my_selections(request: HttpRequest) -> HttpResponse:
     qs = Selection.objects.filter(customer=customer).exclude(choice="reject")
     if event_filter:
         qs = qs.filter(photo__event_id=event_filter)
-    selections = qs.select_related("photo__event").order_by("photo__event__name", "choice")
+    selections = qs.select_related("photo__event").order_by(
+        "photo__event__name", "choice"
+    )
 
     # Group by event, then by choice within each event
     from collections import OrderedDict
@@ -475,7 +505,7 @@ def _build_invoice(order: Order) -> Invoice:
     """Create or update an Invoice and its line items from the current order state."""
     from decimal import Decimal
 
-    from accounts.models import PhotographerProfile
+    from jasonstudio.accounts.models import PhotographerProfile
 
     event = order.event
     customer = order.customer
@@ -499,41 +529,51 @@ def _build_invoice(order: Order) -> Invoice:
 
     # Build line items
     items = []
-    items.append({
-        "sort_order": 0,
-        "description": "Photography",
-        "filename": "",
-        "qty": order.photographer_hours,
-        "unit_cost": order.photographer_rate,
-        "price": photographer_fee,
-    })
+    items.append(
+        {
+            "sort_order": 0,
+            "description": "Photography",
+            "filename": "",
+            "qty": order.photographer_hours,
+            "unit_cost": order.photographer_rate,
+            "price": photographer_fee,
+        }
+    )
 
     for i, s in enumerate(print_items):
-        items.append({
-            "sort_order": i + 1,
-            "description": f"Print & Digital — {s.get_print_size_display()}",
-            "filename": s.photo.filename,
-            "qty": Decimal("1"),
-            "unit_cost": Decimal("0"),
-            "price": Decimal("0"),
-        })
+        items.append(
+            {
+                "sort_order": i + 1,
+                "description": f"Print & Digital — {s.get_print_size_display()}",
+                "filename": s.photo.filename,
+                "qty": Decimal("1"),
+                "unit_cost": Decimal("0"),
+                "price": Decimal("0"),
+            }
+        )
 
     digital_count = len(digital_items)
     if digital_count:
-        items.append({
-            "sort_order": len(print_items) + 1,
-            "description": "Digital images",
-            "filename": "",
-            "qty": Decimal(digital_count),
-            "unit_cost": Decimal("0"),
-            "price": Decimal("0"),
-        })
+        items.append(
+            {
+                "sort_order": len(print_items) + 1,
+                "description": "Digital images",
+                "filename": "",
+                "qty": Decimal(digital_count),
+                "unit_cost": Decimal("0"),
+                "price": Decimal("0"),
+            }
+        )
 
     # Compute totals
     subtotal = sum(item["price"] for item in items)
     deposit = order.deposit_amount
     photographer_profile = PhotographerProfile.objects.first()
-    tax_rate = Decimal(str(photographer_profile.tax_rate)) if photographer_profile else Decimal("0")
+    tax_rate = (
+        Decimal(str(photographer_profile.tax_rate))
+        if photographer_profile
+        else Decimal("0")
+    )
     tax_amount = subtotal * tax_rate / Decimal("100")
     amount_due = subtotal - deposit + tax_amount
 
@@ -559,7 +599,7 @@ def selection_invoice(request: HttpRequest, event_id: str) -> HttpResponse:
     if not customer:
         return redirect("home")
 
-    from accounts.models import PhotographerProfile
+    from jasonstudio.accounts.models import PhotographerProfile
 
     event = get_object_or_404(Event, pk=event_id, customers=customer)
     order = Order.objects.filter(event=event, customer=customer).first()
@@ -592,8 +632,8 @@ def photographer_invoice(
     if not _is_photographer(request.user):
         return redirect("home")
 
-    from accounts.models import Customer as CustomerModel
-    from accounts.models import PhotographerProfile
+    from jasonstudio.accounts.models import Customer as CustomerModel
+    from jasonstudio.accounts.models import PhotographerProfile
 
     event = get_object_or_404(Event, pk=event_id)
     customer = get_object_or_404(CustomerModel, pk=customer_id)
@@ -640,14 +680,20 @@ def event_orders(request: HttpRequest, event_id: str) -> HttpResponse:
         if selections.exists() and not order:
             order, _ = Order.objects.get_or_create(event=event, customer=customer)
 
-        customer_rows.append({
-            "customer": customer,
-            "quotation": quotation,
-            "order": order,
-            "digital_count": selections.filter(choice="digital").count() if selections.exists() else 0,
-            "both_count": selections.filter(choice="both").count() if selections.exists() else 0,
-            "selection_total": selections.count() if selections.exists() else 0,
-        })
+        customer_rows.append(
+            {
+                "customer": customer,
+                "quotation": quotation,
+                "order": order,
+                "digital_count": selections.filter(choice="digital").count()
+                if selections.exists()
+                else 0,
+                "both_count": selections.filter(choice="both").count()
+                if selections.exists()
+                else 0,
+                "selection_total": selections.count() if selections.exists() else 0,
+            }
+        )
 
     return render(
         request,
@@ -664,7 +710,7 @@ def customer_order_detail(
         return redirect("home")
 
     event = get_object_or_404(Event, pk=event_id)
-    from accounts.models import Customer
+    from jasonstudio.accounts.models import Customer
 
     customer = get_object_or_404(Customer, pk=customer_id)
     order = get_object_or_404(Order, event=event, customer=customer)
@@ -678,7 +724,9 @@ def customer_order_detail(
     digital_photos = [s.photo for s in selections if s.choice == "digital"]
     print_selections = [s for s in selections if s.choice == "both"]
     print_photos = [s.photo for s in print_selections]
-    print_sizes_by_photo = {str(s.photo_id): s.get_print_size_display() for s in print_selections}
+    print_sizes_by_photo = {
+        str(s.photo_id): s.get_print_size_display() for s in print_selections
+    }
     rejected = Selection.objects.filter(
         customer=customer, photo__event=event, choice="reject"
     ).count()
@@ -708,7 +756,7 @@ def update_order_status(
         return redirect("home")
 
     event = get_object_or_404(Event, pk=event_id)
-    from accounts.models import Customer
+    from jasonstudio.accounts.models import Customer
 
     customer = get_object_or_404(Customer, pk=customer_id)
     order = get_object_or_404(Order, event=event, customer=customer)
@@ -730,22 +778,26 @@ def update_order_status(
         from decimal import Decimal, InvalidOperation
 
         try:
-            order.photographer_hours = Decimal(request.POST.get("photographer_hours", "0"))
-        except (InvalidOperation, ValueError):
+            order.photographer_hours = Decimal(
+                request.POST.get("photographer_hours", "0")
+            )
+        except InvalidOperation, ValueError:
             pass
         else:
             update_fields.append("photographer_hours")
 
         try:
-            order.photographer_rate = Decimal(request.POST.get("photographer_rate", "0"))
-        except (InvalidOperation, ValueError):
+            order.photographer_rate = Decimal(
+                request.POST.get("photographer_rate", "0")
+            )
+        except InvalidOperation, ValueError:
             pass
         else:
             update_fields.append("photographer_rate")
 
         try:
             order.deposit_amount = Decimal(request.POST.get("deposit_amount", "0"))
-        except (InvalidOperation, ValueError):
+        except InvalidOperation, ValueError:
             pass
         else:
             update_fields.append("deposit_amount")
@@ -765,7 +817,7 @@ def download_zip(
         return redirect("home")
 
     event = get_object_or_404(Event, pk=event_id)
-    from accounts.models import Customer
+    from jasonstudio.accounts.models import Customer
 
     customer = get_object_or_404(Customer, pk=customer_id)
     order = get_object_or_404(Order, event=event, customer=customer)
@@ -817,9 +869,11 @@ def customer_download(request: HttpRequest, event_id: str) -> HttpResponse:
             )
         return HttpResponse("Payment required before download.", status=403)
 
-    selections = Selection.objects.filter(
-        customer=customer, photo__event=event
-    ).exclude(choice="reject").select_related("photo")
+    selections = (
+        Selection.objects.filter(customer=customer, photo__event=event)
+        .exclude(choice="reject")
+        .select_related("photo")
+    )
 
     photos = [s.photo for s in selections if s.choice in ("digital", "both")]
 
@@ -869,16 +923,21 @@ def service_edit(request: HttpRequest, service_id: str | None = None) -> HttpRes
         unit_type = request.POST.get("unit_type", Service.UnitType.PER_HOUR)
         try:
             default_rate = Decimal(request.POST.get("default_rate", "0"))
-        except (InvalidOperation, ValueError):
+        except InvalidOperation, ValueError:
             default_rate = Decimal("0")
         sort_order = int(request.POST.get("sort_order", "0") or "0")
         is_active = request.POST.get("is_active") == "on"
 
         if not name:
-            return render(request, "gallery/service_form.html", {
-                "service": service, "error": "Name is required.",
-                "action": "Edit" if service else "Add",
-            })
+            return render(
+                request,
+                "gallery/service_form.html",
+                {
+                    "service": service,
+                    "error": "Name is required.",
+                    "action": "Edit" if service else "Add",
+                },
+            )
 
         if service:
             service.name = name
@@ -890,16 +949,24 @@ def service_edit(request: HttpRequest, service_id: str | None = None) -> HttpRes
             service.save()
         else:
             Service.objects.create(
-                name=name, description=description, unit_type=unit_type,
-                default_rate=default_rate, sort_order=sort_order, is_active=is_active,
+                name=name,
+                description=description,
+                unit_type=unit_type,
+                default_rate=default_rate,
+                sort_order=sort_order,
+                is_active=is_active,
             )
         return redirect("service_list")
 
-    return render(request, "gallery/service_form.html", {
-        "service": service,
-        "action": "Edit" if service else "Add",
-        "unit_types": Service.UnitType.choices,
-    })
+    return render(
+        request,
+        "gallery/service_form.html",
+        {
+            "service": service,
+            "action": "Edit" if service else "Add",
+            "unit_types": Service.UnitType.choices,
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -911,11 +978,9 @@ def _build_quotation_totals(quotation: Quotation) -> None:
     """Recalculate quotation subtotal, tax, and total from its line items."""
     from decimal import Decimal
 
-    from accounts.models import PhotographerProfile
+    from jasonstudio.accounts.models import PhotographerProfile
 
-    subtotal = sum(
-        (item.price for item in quotation.line_items.all()), Decimal("0")
-    )
+    subtotal = sum((item.price for item in quotation.line_items.all()), Decimal("0"))
     photographer_profile = PhotographerProfile.objects.first()
     tax_rate = (
         Decimal(str(photographer_profile.tax_rate))
@@ -944,22 +1009,21 @@ def quotation_edit(
 
     from decimal import Decimal, InvalidOperation
 
-    from accounts.models import Customer as CustomerModel
+    from jasonstudio.accounts.models import Customer as CustomerModel
 
     event = get_object_or_404(Event, pk=event_id)
     customer = get_object_or_404(CustomerModel, pk=customer_id)
 
     quotation, _created = Quotation.objects.get_or_create(
-        event=event, customer=customer,
+        event=event,
+        customer=customer,
     )
 
     if request.method == "POST":
         # Save deposit and validity
         try:
-            quotation.deposit_amount = Decimal(
-                request.POST.get("deposit_amount", "0")
-            )
-        except (InvalidOperation, ValueError):
+            quotation.deposit_amount = Decimal(request.POST.get("deposit_amount", "0"))
+        except InvalidOperation, ValueError:
             pass
         valid_until = request.POST.get("valid_until", "").strip()
         if valid_until:
@@ -986,13 +1050,11 @@ def quotation_edit(
             if desc:
                 try:
                     qty = Decimal(request.POST.get(f"item_{idx}_qty", "1"))
-                except (InvalidOperation, ValueError):
+                except InvalidOperation, ValueError:
                     qty = Decimal("1")
                 try:
-                    unit_cost = Decimal(
-                        request.POST.get(f"item_{idx}_unit_cost", "0")
-                    )
-                except (InvalidOperation, ValueError):
+                    unit_cost = Decimal(request.POST.get(f"item_{idx}_unit_cost", "0"))
+                except InvalidOperation, ValueError:
                     unit_cost = Decimal("0")
                 price = qty * unit_cost
                 service_id = request.POST.get(f"item_{idx}_service", "")
@@ -1016,13 +1078,17 @@ def quotation_edit(
         return redirect("quotation_view", event_id=event.pk, customer_id=customer.pk)
 
     services = Service.objects.filter(is_active=True)
-    return render(request, "gallery/quotation_form.html", {
-        "event": event,
-        "customer": customer,
-        "quotation": quotation,
-        "line_items": quotation.line_items.all(),
-        "services": services,
-    })
+    return render(
+        request,
+        "gallery/quotation_form.html",
+        {
+            "event": event,
+            "customer": customer,
+            "quotation": quotation,
+            "line_items": quotation.line_items.all(),
+            "services": services,
+        },
+    )
 
 
 @login_required
@@ -1033,22 +1099,26 @@ def quotation_view(
     if not _is_photographer(request.user):
         return redirect("home")
 
-    from accounts.models import Customer as CustomerModel
-    from accounts.models import PhotographerProfile
+    from jasonstudio.accounts.models import Customer as CustomerModel
+    from jasonstudio.accounts.models import PhotographerProfile
 
     event = get_object_or_404(Event, pk=event_id)
     customer = get_object_or_404(CustomerModel, pk=customer_id)
     quotation = get_object_or_404(Quotation, event=event, customer=customer)
     photographer = PhotographerProfile.objects.first()
 
-    return render(request, "gallery/quotation_detail.html", {
-        "event": event,
-        "customer": customer,
-        "quotation": quotation,
-        "line_items": quotation.line_items.all(),
-        "photographer": photographer,
-        "is_photographer_view": True,
-    })
+    return render(
+        request,
+        "gallery/quotation_detail.html",
+        {
+            "event": event,
+            "customer": customer,
+            "quotation": quotation,
+            "line_items": quotation.line_items.all(),
+            "photographer": photographer,
+            "is_photographer_view": True,
+        },
+    )
 
 
 @login_required
@@ -1060,7 +1130,7 @@ def quotation_accept(
     if not _is_photographer(request.user):
         return redirect("home")
 
-    from accounts.models import Customer as CustomerModel
+    from jasonstudio.accounts.models import Customer as CustomerModel
 
     event = get_object_or_404(Event, pk=event_id)
     customer = get_object_or_404(CustomerModel, pk=customer_id)
@@ -1080,20 +1150,24 @@ def customer_quotation_view(request: HttpRequest, event_id: str) -> HttpResponse
     if not customer:
         return redirect("home")
 
-    from accounts.models import PhotographerProfile
+    from jasonstudio.accounts.models import PhotographerProfile
 
     event = get_object_or_404(Event, pk=event_id, customers=customer)
     quotation = get_object_or_404(Quotation, event=event, customer=customer)
     photographer = PhotographerProfile.objects.first()
 
-    return render(request, "gallery/quotation_detail.html", {
-        "event": event,
-        "customer": customer,
-        "quotation": quotation,
-        "line_items": quotation.line_items.all(),
-        "photographer": photographer,
-        "is_photographer_view": False,
-    })
+    return render(
+        request,
+        "gallery/quotation_detail.html",
+        {
+            "event": event,
+            "customer": customer,
+            "quotation": quotation,
+            "line_items": quotation.line_items.all(),
+            "photographer": photographer,
+            "is_photographer_view": False,
+        },
+    )
 
 
 @login_required
@@ -1133,6 +1207,7 @@ def customer_quotation_decline(request: HttpRequest, event_id: str) -> HttpRespo
 
     return redirect("customer_quotation_view", event_id=event.pk)
 
+
 # --- Share Link ---
 
 
@@ -1169,7 +1244,7 @@ def deactivate_share_link(request: HttpRequest, event_id: str) -> HttpResponse:
         order = get_object_or_404(Order, event=event, customer=customer)
     elif is_photographer:
         event = get_object_or_404(Event, pk=event_id)
-        from accounts.models import Customer as CustomerModel
+        from jasonstudio.accounts.models import Customer as CustomerModel
 
         customer_id = request.POST.get("customer_id")
         cust = get_object_or_404(CustomerModel, pk=customer_id)
@@ -1225,14 +1300,18 @@ def shared_download_file(request: HttpRequest, code: str) -> HttpResponse:
     event = order.event
     customer = order.customer
 
-    selections = Selection.objects.filter(
-        customer=customer, photo__event=event
-    ).exclude(choice="reject").select_related("photo")
+    selections = (
+        Selection.objects.filter(customer=customer, photo__event=event)
+        .exclude(choice="reject")
+        .select_related("photo")
+    )
 
     photos = [s.photo for s in selections if s.choice in ("digital", "both")]
 
     # Increment counts
-    ShareLink.objects.filter(pk=share_link.pk).update(download_count=F("download_count") + 1)
+    ShareLink.objects.filter(pk=share_link.pk).update(
+        download_count=F("download_count") + 1
+    )
     Order.objects.filter(pk=order.pk).update(download_count=F("download_count") + 1)
 
     buffer = BytesIO()

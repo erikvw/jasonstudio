@@ -54,9 +54,17 @@ class PhotographerProfileAdmin(admin.ModelAdmin):
     fieldsets = [
         (None, {"fields": ["user", "business_name"]}),
         ("Contact", {"fields": ["phone", "email", "address"]}),
-        ("Invoice Settings", {"fields": [
-            "payment_terms", "payment_instructions", "tax_rate", "invoice_notes",
-        ]}),
+        (
+            "Invoice Settings",
+            {
+                "fields": [
+                    "payment_terms",
+                    "payment_instructions",
+                    "tax_rate",
+                    "invoice_notes",
+                ]
+            },
+        ),
     ]
 
 
@@ -73,7 +81,15 @@ class QuotationLineItemInline(admin.TabularInline):
 
 @admin.register(Quotation)
 class QuotationAdmin(admin.ModelAdmin):
-    list_display = ["quote_number", "event", "customer", "status", "total", "valid_until", "created"]
+    list_display = [
+        "quote_number",
+        "event",
+        "customer",
+        "status",
+        "total",
+        "valid_until",
+        "created",
+    ]
     list_filter = ["status"]
     search_fields = ["quote_number", "customer__user__username", "event__name"]
     readonly_fields = ["quote_number", "accepted_at", "accepted_by"]
@@ -82,7 +98,15 @@ class QuotationAdmin(admin.ModelAdmin):
 
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
-    list_display = ["ref", "event", "customer", "status", "paid_at", "download_count", "created"]
+    list_display = [
+        "ref",
+        "event",
+        "customer",
+        "status",
+        "paid_at",
+        "download_count",
+        "created",
+    ]
     list_filter = ["status", "event"]
     search_fields = ["ref", "customer__user__username", "event__name"]
     readonly_fields = ["ref", "paid_at", "download_count"]
@@ -102,10 +126,24 @@ class PaymentInline(admin.TabularInline):
 
 @admin.register(Invoice)
 class InvoiceAdmin(admin.ModelAdmin):
-    list_display = ["invoice_number", "order", "status", "amount_due", "issued_at", "created"]
+    list_display = [
+        "invoice_number",
+        "order",
+        "status",
+        "amount_due",
+        "issued_at",
+        "created",
+    ]
     list_filter = ["status"]
     search_fields = ["invoice_number", "order__ref"]
-    readonly_fields = ["invoice_number", "subtotal", "deposit", "tax_rate", "tax_amount", "amount_due"]
+    readonly_fields = [
+        "invoice_number",
+        "subtotal",
+        "deposit",
+        "tax_rate",
+        "tax_amount",
+        "amount_due",
+    ]
     inlines = [InvoiceLineItemInline, PaymentInline]
 
 

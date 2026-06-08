@@ -3,8 +3,8 @@ from django.contrib.auth.models import User
 from django.test import Client
 from django.urls import reverse
 
-from accounts.models import Customer
-from gallery.models import Selection
+from jasonstudio.accounts.models import Customer
+from jasonstudio.gallery.models import Selection
 
 
 @pytest.fixture
@@ -92,9 +92,7 @@ class TestCustomerEdit:
 class TestCustomerToggleActive:
     def test_deactivate(self, photographer_client, customer):
         assert customer.is_active is True
-        photographer_client.post(
-            reverse("customer_toggle_active", args=[customer.pk])
-        )
+        photographer_client.post(reverse("customer_toggle_active", args=[customer.pk]))
         customer.refresh_from_db()
         assert customer.is_active is False
         customer.user.refresh_from_db()
@@ -105,9 +103,7 @@ class TestCustomerToggleActive:
         customer.user.is_active = False
         customer.save()
         customer.user.save()
-        photographer_client.post(
-            reverse("customer_toggle_active", args=[customer.pk])
-        )
+        photographer_client.post(reverse("customer_toggle_active", args=[customer.pk]))
         customer.refresh_from_db()
         assert customer.is_active is True
 
@@ -116,32 +112,30 @@ class TestCustomerDelete:
     def test_delete_with_no_data(self, photographer_client, db):
         user = User.objects.create_user(username="empty_cust", password="pass")
         cust = Customer.objects.create(user=user)
-        resp = photographer_client.post(
-            reverse("customer_delete", args=[cust.pk])
-        )
+        resp = photographer_client.post(reverse("customer_delete", args=[cust.pk]))
         assert resp.status_code == 302
         assert not Customer.objects.filter(pk=cust.pk).exists()
         assert not User.objects.filter(pk=user.pk).exists()
 
-    def test_delete_blocked_with_orders(self, photographer_client, customer, event_with_customer, order):
-        resp = photographer_client.post(
-            reverse("customer_delete", args=[customer.pk])
-        )
+    def test_delete_blocked_with_orders(
+        self, photographer_client, customer, event_with_customer, order
+    ):
+        resp = photographer_client.post(reverse("customer_delete", args=[customer.pk]))
         assert resp.status_code == 302
         # Customer still exists
         assert Customer.objects.filter(pk=customer.pk).exists()
 
-    def test_delete_blocked_with_events(self, photographer_client, customer, event_with_customer):
-        resp = photographer_client.post(
-            reverse("customer_delete", args=[customer.pk])
-        )
+    def test_delete_blocked_with_events(
+        self, photographer_client, customer, event_with_customer
+    ):
+        resp = photographer_client.post(reverse("customer_delete", args=[customer.pk]))
         assert resp.status_code == 302
         assert Customer.objects.filter(pk=customer.pk).exists()
 
-    def test_delete_blocked_with_selections(self, photographer_client, customer, event_with_customer, photo):
+    def test_delete_blocked_with_selections(
+        self, photographer_client, customer, event_with_customer, photo
+    ):
         Selection.objects.create(photo=photo, customer=customer, choice="digital")
-        resp = photographer_client.post(
-            reverse("customer_delete", args=[customer.pk])
-        )
+        resp = photographer_client.post(reverse("customer_delete", args=[customer.pk]))
         assert resp.status_code == 302
         assert Customer.objects.filter(pk=customer.pk).exists()

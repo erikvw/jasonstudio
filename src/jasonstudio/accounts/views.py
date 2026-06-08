@@ -85,7 +85,9 @@ def customer_add(request: HttpRequest) -> HttpResponse:
     else:
         form = CustomerForm()
 
-    return render(request, "accounts/customer_form.html", {"form": form, "action": "Add"})
+    return render(
+        request, "accounts/customer_form.html", {"form": form, "action": "Add"}
+    )
 
 
 @login_required
@@ -107,16 +109,19 @@ def customer_edit(request: HttpRequest, customer_id: str) -> HttpResponse:
             customer.save(update_fields=["company_name", "phone", "modified"])
             return redirect("customer_list")
     else:
-        form = CustomerForm(initial={
-            "first_name": customer.user.first_name,
-            "last_name": customer.user.last_name,
-            "company_name": customer.company_name,
-            "email": customer.user.email,
-            "phone": customer.phone,
-        })
+        form = CustomerForm(
+            initial={
+                "first_name": customer.user.first_name,
+                "last_name": customer.user.last_name,
+                "company_name": customer.company_name,
+                "email": customer.user.email,
+                "phone": customer.phone,
+            }
+        )
 
     return render(
-        request, "accounts/customer_form.html",
+        request,
+        "accounts/customer_form.html",
         {"form": form, "action": "Edit", "customer": customer},
     )
 
