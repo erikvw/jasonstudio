@@ -1,0 +1,1 @@
+/* Placeholder for Read the Docs JavaScript integration. */

@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}{{ action }} Service — Jason Studio{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2>{{ action }} Service</h2>
+            <a href="{% url 'service_list' %}" class="btn btn-outline-secondary">Back to Services</a>
+        </div>
+
+        {% if error %}
+        <div class="alert alert-danger">{{ error }}</div>
+        {% endif %}
+
+        <form method="post">
+            {% csrf_token %}
+            <div class="card mb-4">
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label for="id_name" class="form-label">Name</label>
+                        <input type="text" name="name" id="id_name"
+                               value="{{ service.name|default_if_none:'' }}"
+                               class="form-control" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="id_description" class="form-label">Description</label>
+                        <textarea name="description" id="id_description" rows="2"
+                                  class="form-control">{{ service.description|default_if_none:'' }}</textarea>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="id_unit_type" class="form-label">Unit Type</label>
+                            <select name="unit_type" id="id_unit_type" class="form-select">
+                                {% for value, label in unit_types %}
+                                <option value="{{ value }}" {% if service and service.unit_type == value %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="id_default_rate" class="form-label">Default Rate ($)</label>
+                            <input type="number" name="default_rate" id="id_default_rate"
+                                   value="{{ service.default_rate|default_if_none:'0' }}"
+                                   step="0.01" min="0" class="form-control">
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="id_sort_order" class="form-label">Sort Order</label>
+                            <input type="number" name="sort_order" id="id_sort_order"
+                                   value="{{ service.sort_order|default_if_none:'0' }}"
+                                   min="0" class="form-control">
+                        </div>
+                        <div class="col-md-6 mb-3 d-flex align-items-end">
+                            <div class="form-check">
+                                <input type="checkbox" name="is_active" id="id_is_active" class="form-check-input"
+                                       {% if service.is_active or not service %}checked{% endif %}>
+                                <label for="id_is_active" class="form-check-label">Active</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary">Save</button>
+                <a href="{% url 'service_list' %}" class="btn btn-outline-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

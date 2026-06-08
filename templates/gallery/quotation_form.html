@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+{% block title %}Quotation — {{ event.name }} — Jason Studio{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-start mb-4 flex-wrap gap-2">
+    <h2 class="mb-0">Quotation for {{ customer.user.get_full_name|default:customer.user.username }}</h2>
+    <a href="{% url 'event_orders' event.pk %}" class="btn btn-outline-secondary btn-sm">Back to Orders</a>
+</div>
+
+<div class="row mb-3">
+    <div class="col-md-6">
+        <p class="text-muted mb-0">Event: <strong>{{ event.name }}</strong> — {{ event.date }}</p>
+    </div>
+    <div class="col-md-6 text-end">
+        {% if quotation.quote_number %}
+        <span class="badge bg-secondary">{{ quotation.quote_number }}</span>
+        {% endif %}
+        <span class="badge bg-{% if quotation.status == 'draft' %}warning{% elif quotation.status == 'sent' %}info{% elif quotation.status == 'accepted' %}success{% elif quotation.status == 'declined' %}danger{% else %}secondary{% endif %}">
+            {{ quotation.get_status_display }}
+        </span>
+    </div>
+</div>
+
+<form method="post">
+    {% csrf_token %}
+
+    <div class="card mb-4">
+        <div class="card-header"><strong>Quote Details</strong></div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <label for="id_deposit" class="form-label">Deposit ($)</label>
+                    <input type="number" name="deposit_amount" id="id_deposit"
+                           value="{{ quotation.deposit_amount|floatformat:2 }}"
+                           step="0.01" min="0" class="form-control">
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label for="id_valid_until" class="form-label">Valid Until</label>
+                    <input type="date" name="valid_until" id="id_valid_until"
+                           value="{% if quotation.valid_until %}{{ quotation.valid_until|date:'Y-m-d' }}{% endif %}"
+                           class="form-control">
+                </div>
+            </div>
+            <div class="mb-3">
+                <label for="id_notes" class="form-label">Notes</label>
+                <textarea name="notes" id="id_notes" rows="2" class="form-control">{{ quotation.notes }}</textarea>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <strong>Line Items</strong>
+            <button type="button" class="btn btn-sm btn-outline-primary" id="addLineItem">
+                <i class="fa-solid fa-plus"></i> Add Item
+            </button>
+        </div>
+        <div class="card-body">
+            {% if services %}
+            <div class="mb-3">
+                <label class="form-label small text-muted">Quick add from catalog:</label>
+                <div class="d-flex flex-wrap gap-1">
+                    {% for svc in services %}
+                    <button type="button" class="btn btn-sm btn-outline-secondary add-service-btn"
+                            data-name="{{ svc.name }}"
+                            data-rate="{{ svc.default_rate }}"
+                            data-id="{{ svc.pk }}">
+                        {{ svc.name }} (${{ svc.default_rate|floatformat:2 }})
+                    </button>
+                    {% endfor %}
+                </div>
+            </div>
+            <hr>
+            {% endif %}
+
+            <div id="lineItemsContainer">
+                {% for item in line_items %}
+                <div class="row g-2 mb-2 line-item-row" data-index="{{ forloop.counter0 }}">
+                    <input type="hidden" name="item_{{ forloop.counter0 }}_service" value="{{ item.service_id|default_if_none:'' }}">
+                    <div class="col-md-4">
+                        <input type="text" name="item_{{ forloop.counter0 }}_description"
+                               value="{{ item.description }}" class="form-control form-control-sm"
+                               placeholder="Description" required>
+                    </div>
+                    <div class="col-md-2">
+                        <input type="number" name="item_{{ forloop.counter0 }}_qty"
+                               value="{{ item.qty }}" step="0.01" min="0"
+                               class="form-control form-control-sm item-qty" placeholder="Qty">
+                    </div>
+                    <div class="col-md-2">
+                        <input type="number" name="item_{{ forloop.counter0 }}_unit_cost"
+                               value="{{ item.unit_cost }}" step="0.01" min="0"
+                               class="form-control form-control-sm item-unit-cost" placeholder="Unit Cost">
+                    </div>
+                    <div class="col-md-2">
+                        <input type="text" class="form-control form-control-sm item-price" readonly
+                               value="${{ item.price|floatformat:2 }}">
+                    </div>
+                    <div class="col-md-2">
+                        <button type="button" class="btn btn-sm btn-outline-danger remove-line-item">
+                            <i class="fa-solid fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+                {% empty %}
+                <p class="text-muted small" id="noItemsMsg">No line items yet. Add from the catalog or click "Add Item".</p>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary">Save Quotation</button>
+        {% if quotation.quote_number %}
+        <a href="{% url 'quotation_view' event.pk customer.pk %}" class="btn btn-outline-secondary">View</a>
+        {% endif %}
+        <a href="{% url 'event_orders' event.pk %}" class="btn btn-outline-secondary">Cancel</a>
+    </div>
+</form>
+
+<script>
+let lineIndex = {{ line_items|length|default:"0" }};
+
+function addLineItem(description, rate, serviceId) {
+    const noMsg = document.getElementById('noItemsMsg');
+    if (noMsg) noMsg.remove();
+
+    const container = document.getElementById('lineItemsContainer');
+    const row = document.createElement('div');
+    row.className = 'row g-2 mb-2 line-item-row';
+    row.dataset.index = lineIndex;
+    row.innerHTML = `
+        <input type="hidden" name="item_${lineIndex}_service" value="${serviceId || ''}">
+        <div class="col-md-4">
+            <input type="text" name="item_${lineIndex}_description"
+                   value="${description || ''}" class="form-control form-control-sm"
+                   placeholder="Description" required>
+        </div>
+        <div class="col-md-2">
+            <input type="number" name="item_${lineIndex}_qty"
+                   value="1" step="0.01" min="0"
+                   class="form-control form-control-sm item-qty" placeholder="Qty">
+        </div>
+        <div class="col-md-2">
+            <input type="number" name="item_${lineIndex}_unit_cost"
+                   value="${rate || '0'}" step="0.01" min="0"
+                   class="form-control form-control-sm item-unit-cost" placeholder="Unit Cost">
+        </div>
+        <div class="col-md-2">
+            <input type="text" class="form-control form-control-sm item-price" readonly
+                   value="$${(parseFloat(rate || 0)).toFixed(2)}">
+        </div>
+        <div class="col-md-2">
+            <button type="button" class="btn btn-sm btn-outline-danger remove-line-item">
+                <i class="fa-solid fa-trash"></i>
+            </button>
+        </div>
+    `;
+    container.appendChild(row);
+    lineIndex++;
+    updatePrices();
+}
+
+document.getElementById('addLineItem').addEventListener('click', () => addLineItem('', '', ''));
+
+document.querySelectorAll('.add-service-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        addLineItem(btn.dataset.name, btn.dataset.rate, btn.dataset.id);
+    });
+});
+
+document.addEventListener('click', e => {
+    if (e.target.closest('.remove-line-item')) {
+        e.target.closest('.line-item-row').remove();
+        reindexItems();
+    }
+});
+
+document.addEventListener('input', e => {
+    if (e.target.classList.contains('item-qty') || e.target.classList.contains('item-unit-cost')) {
+        updatePrices();
+    }
+});
+
+function updatePrices() {
+    document.querySelectorAll('.line-item-row').forEach(row => {
+        const qty = parseFloat(row.querySelector('.item-qty')?.value || 0);
+        const cost = parseFloat(row.querySelector('.item-unit-cost')?.value || 0);
+        const priceField = row.querySelector('.item-price');
+        if (priceField) priceField.value = '$' + (qty * cost).toFixed(2);
+    });
+}
+
+function reindexItems() {
+    document.querySelectorAll('.line-item-row').forEach((row, i) => {
+        row.dataset.index = i;
+        row.querySelectorAll('input[name]').forEach(inp => {
+            inp.name = inp.name.replace(/item_\d+_/, `item_${i}_`);
+        });
+    });
+    lineIndex = document.querySelectorAll('.line-item-row').length;
+}
+</script>
+{% endblock %}
