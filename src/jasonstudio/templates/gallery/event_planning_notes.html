@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Notes — {{ event.name }} — Jason Studio{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+    <div>
+        <h2 class="mb-1">Planning Notes</h2>
+        <p class="text-muted mb-0">{{ event.name }} — {{ event.date }} — {{ event.location }}</p>
+    </div>
+    <a href="{% url 'photographer_dashboard' %}" class="btn btn-outline-secondary btn-sm">Dashboard</a>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <strong>Internal Notes</strong>
+        <small class="text-muted">— not visible to customers</small>
+    </div>
+    <div class="card-body">
+        <form method="post">
+            {% csrf_token %}
+            <textarea name="planning_notes" rows="10" class="form-control mb-3"
+                      placeholder="Equipment, schedule, location details, special arrangements, shot list…">{{ event.planning_notes }}</textarea>
+            <button type="submit" class="btn btn-primary">Save</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

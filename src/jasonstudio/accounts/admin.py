@@ -103,13 +103,12 @@ class OrderAdmin(admin.ModelAdmin):
         "event",
         "customer",
         "status",
-        "paid_at",
         "download_count",
         "date_created",
     ]
     list_filter = ["status", "event"]
     search_fields = ["ref", "customer__user__username", "event__name"]
-    readonly_fields = ["ref", "paid_at", "download_count"]
+    readonly_fields = ["ref", "download_count"]
 
 
 class InvoiceLineItemInline(admin.TabularInline):
@@ -149,6 +148,7 @@ class InvoiceAdmin(admin.ModelAdmin):
 
 @admin.register(Payment)
 class PaymentAdmin(admin.ModelAdmin):
-    list_display = ["invoice", "amount", "method", "reference", "date"]
+    list_display = ["receipt_number", "invoice", "amount", "method", "date"]
     list_filter = ["method"]
-    search_fields = ["invoice__invoice_number", "reference"]
+    search_fields = ["receipt_number", "invoice__invoice_number"]
+    readonly_fields = ["receipt_number"]

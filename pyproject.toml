@@ -11,6 +11,8 @@ dependencies = [
     "django-htmx>=1.27.0",
     "django-simple-history>=3.11.0",
     "django-storages>=1.14.6",
+    "google-api-python-client>=2.197.0",
+    "google-auth>=2.53.0",
     "pillow>=12.2.0",
     "psycopg>=3.3.4",
 ]

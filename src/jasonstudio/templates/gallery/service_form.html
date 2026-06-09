@@ -53,11 +53,17 @@
                                    value="{{ service.sort_order|default_if_none:'0' }}"
                                    min="0" class="form-control">
                         </div>
-                        <div class="col-md-6 mb-3 d-flex align-items-end">
+                        <div class="col-md-6 mb-3 d-flex align-items-end gap-4">
                             <div class="form-check">
                                 <input type="checkbox" name="is_active" id="id_is_active" class="form-check-input"
                                        {% if service.is_active or not service %}checked{% endif %}>
                                 <label for="id_is_active" class="form-check-label">Active</label>
+                            </div>
+                            <div class="form-check">
+                                <input type="checkbox" name="is_default" id="id_is_default" class="form-check-input"
+                                       {% if service.is_default %}checked{% endif %}>
+                                <label for="id_is_default" class="form-check-label">Default</label>
+                                <div class="form-text">Auto-add to new quotes</div>
                             </div>
                         </div>
                     </div>

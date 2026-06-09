@@ -257,8 +257,6 @@ class QuotationLineItem(models.Model):
 
 class Order(AuditFieldsMixin):
     class Status(models.TextChoices):
-        PENDING_PAYMENT = "pending_payment", "Pending Payment"
-        PAID = "paid", "Paid"
         IN_PROGRESS = "in_progress", "In Progress"
         DELIVERED = "delivered", "Delivered"
 
@@ -290,14 +288,9 @@ class Order(AuditFieldsMixin):
     status = models.CharField(
         max_length=20,
         choices=Status.choices,
-        default=Status.PENDING_PAYMENT,
+        default=Status.IN_PROGRESS,
     )
     download_count = models.PositiveIntegerField(default=0)
-    paid_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        help_text="When payment was received. Download link expires 30 days after this.",
-    )
     notes = models.TextField(blank=True, default="")
 
     history = HistoricalRecords()
@@ -335,23 +328,30 @@ class Order(AuditFieldsMixin):
                 except ValueError:
                     next_num = Order.objects.count() + 1
             self.ref = f"ORD-{next_num:05d}"
-        # Auto-set paid_at when status changes to paid
-        if self.status == self.Status.PAID and not self.paid_at:
-            self.paid_at = timezone.now()
         super().save(*args, **kwargs)
 
     @property
     def is_paid(self) -> bool:
-        return self.status in (
-            self.Status.PAID,
-            self.Status.IN_PROGRESS,
-            self.Status.DELIVERED,
-        )
+        """Order is paid when its latest invoice has a payment recorded."""
+        invoice = self.invoices.order_by("-date_created").first()
+        if invoice and invoice.status == Invoice.Status.PAID:
+            return True
+        return False
+
+    @property
+    def paid_at(self) -> timezone.datetime | None:
+        """Return the date/time of the first payment on the latest invoice."""
+        invoice = self.invoices.order_by("-date_created").first()
+        if invoice:
+            payment = invoice.payments.order_by("date_created").first()
+            if payment:
+                return payment.date_created
+        return None
 
     @property
     def download_expires_at(self):
         if self.paid_at:
-            return self.paid_at + timezone.timedelta(days=30)
+            return self.paid_at + timedelta(days=30)
         return None
 
     @property
@@ -359,9 +359,8 @@ class Order(AuditFieldsMixin):
         if not self.is_paid:
             return False
         if not self.paid_at:
-            # Paid but no timestamp recorded (legacy) — allow download
             return True
-        return timezone.now() <= self.paid_at + timezone.timedelta(days=30)
+        return timezone.now() <= self.paid_at + timedelta(days=30)
 
 
 class Invoice(AuditFieldsMixin):
@@ -476,12 +475,16 @@ class Payment(AuditFieldsMixin):
         OTHER = "other", "Other"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    receipt_number = models.CharField(
+        max_length=20,
+        unique=True,
+        blank=True,
+        help_text="Auto-generated receipt number.",
+    )
     invoice = models.ForeignKey(
         Invoice,
         on_delete=models.CASCADE,
         related_name="payments",
-        null=True,
-        blank=True,
     )
     date = models.DateField(
         help_text="Date the payment was received.",
@@ -507,8 +510,10 @@ class Payment(AuditFieldsMixin):
         ordering = ["-date"]
 
     def __str__(self) -> str:
-        inv = self.invoice.invoice_number if self.invoice else "—"
-        return f"${self.amount} ({self.get_method_display()}) — {inv}"
+        return (
+            f"{self.receipt_number} — ${self.amount} "
+            f"({self.get_method_display()}) — {self.invoice.invoice_number}"
+        )
 
     def clean(self) -> None:
         super().clean()
@@ -527,7 +532,24 @@ class Payment(AuditFieldsMixin):
     def save(self, *args, **kwargs) -> None:
         if not self.date:
             self.date = timezone.now().date()
+        if not self.receipt_number:
+            last = (
+                Payment.objects.exclude(receipt_number="")
+                .order_by("-date_created")
+                .first()
+            )
+            next_num = 1
+            if last and last.receipt_number:
+                try:
+                    next_num = int(last.receipt_number.replace("REC-", "")) + 1
+                except ValueError:
+                    next_num = Payment.objects.count() + 1
+            self.receipt_number = f"REC-{next_num:05d}"
         super().save(*args, **kwargs)
+        # Mark invoice as paid when payment is recorded
+        if self.invoice_id and self.invoice.status != Invoice.Status.PAID:
+            self.invoice.status = Invoice.Status.PAID
+            self.invoice.save(update_fields=["status", "date_modified"])
 
 
 # ---------------------------------------------------------------------------

@@ -6,7 +6,7 @@ from django.test import Client
 from django.urls import reverse
 from django.utils import timezone
 
-from jasonstudio.accounts.models import Invoice
+from jasonstudio.accounts.models import Invoice, Payment
 from jasonstudio.gallery.models import (
     Event,
     Selection,
@@ -199,10 +199,13 @@ class TestCustomerDownloadView:
         assert resp.status_code in (302, 403, 404)
 
     def test_download_blocked_when_expired(
-        self, customer_client, event_with_customer, paid_order
+        self, customer_client, event_with_customer, paid_order, invoice
     ):
-        paid_order.paid_at = timezone.now() - datetime.timedelta(days=31)
-        paid_order.save()
+        # Move payment date_created back 31 days to expire downloads
+        payment = invoice.payments.first()
+        Payment.objects.filter(pk=payment.pk).update(
+            date_created=timezone.now() - datetime.timedelta(days=31)
+        )
         resp = customer_client.get(
             reverse("customer_download", args=[event_with_customer.pk])
         )
