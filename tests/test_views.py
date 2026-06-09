@@ -163,11 +163,13 @@ class TestSelectionInvoiceView:
         Selection.objects.create(photo=photo, customer=customer, choice="digital")
         customer_client.get(reverse("selection_invoice", args=[event_with_customer.pk]))
         invoice = Invoice.objects.get(order=order)
-        # photographer_hours=2, rate=150 → subtotal=300
+        # quotation line item: 2 × $150 = $300
         assert invoice.subtotal == Decimal("300.00")
         # tax_rate=13% → tax=39
         assert invoice.tax_amount == Decimal("39.00")
-        assert invoice.amount_due == Decimal("339.00")
+        # subtotal(300) - deposit(100) + tax(39) = 239
+        assert invoice.deposit == Decimal("100.00")
+        assert invoice.amount_due == Decimal("239.00")
 
     def test_no_order_redirects(self, customer_client, event_with_customer):
         resp = customer_client.get(

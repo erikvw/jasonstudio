@@ -44,35 +44,59 @@
     </div>
 </div>
 
-<!-- Photographer Fee -->
+<!-- Quotation Summary -->
 <div class="card mb-4">
-    <div class="card-header"><strong>Photographer Fee</strong></div>
-    <div class="card-body">
-        <form method="post" action="{% url 'update_order_status' event.pk customer.pk %}">
-            {% csrf_token %}
-            <input type="hidden" name="status" value="{{ order.status }}">
-            <input type="hidden" name="update_fee" value="1">
-            <div class="row g-2 align-items-end">
-                <div class="col-6 col-sm-auto">
-                    <label class="form-label mb-0 small">Hours</label>
-                    <input type="number" name="photographer_hours" value="{{ order.photographer_hours }}"
-                           step="0.25" min="0" class="form-control form-control-sm">
-                </div>
-                <div class="col-6 col-sm-auto">
-                    <label class="form-label mb-0 small">Rate ($/hr)</label>
-                    <input type="number" name="photographer_rate" value="{{ order.photographer_rate }}"
-                           step="0.01" min="0" class="form-control form-control-sm">
-                </div>
-                <div class="col-6 col-sm-auto">
-                    <label class="form-label mb-0 small">Deposit ($)</label>
-                    <input type="number" name="deposit_amount" value="{{ order.deposit_amount }}"
-                           step="0.01" min="0" class="form-control form-control-sm">
-                </div>
-                <div class="col-6 col-sm-auto">
-                    <button type="submit" class="btn btn-sm btn-primary w-100">Save</button>
-                </div>
-            </div>
-        </form>
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <strong>Quotation {{ quotation.quote_number }}</strong>
+        <a href="{% url 'quotation_view' event.pk customer.pk %}" class="btn btn-outline-dark btn-sm">
+            View Full Quote
+        </a>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+        <table class="table table-sm mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Description</th>
+                    <th class="text-end">Qty</th>
+                    <th class="text-end">Unit Cost</th>
+                    <th class="text-end">Price</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in quotation_line_items %}
+                <tr>
+                    <td>{{ item.description }}</td>
+                    <td class="text-end">{{ item.qty|floatformat:2 }}</td>
+                    <td class="text-end">${{ item.unit_cost|floatformat:2 }}</td>
+                    <td class="text-end">${{ item.price|floatformat:2 }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr>
+                    <td colspan="3" class="text-end">Subtotal</td>
+                    <td class="text-end">${{ quotation.subtotal|floatformat:2 }}</td>
+                </tr>
+                {% if quotation.deposit_amount %}
+                <tr>
+                    <td colspan="3" class="text-end">Deposit</td>
+                    <td class="text-end">-${{ quotation.deposit_amount|floatformat:2 }}</td>
+                </tr>
+                {% endif %}
+                {% if quotation.tax_amount %}
+                <tr>
+                    <td colspan="3" class="text-end">Tax ({{ quotation.tax_rate|floatformat:2 }}%)</td>
+                    <td class="text-end">${{ quotation.tax_amount|floatformat:2 }}</td>
+                </tr>
+                {% endif %}
+                <tr class="fw-bold">
+                    <td colspan="3" class="text-end">Total</td>
+                    <td class="text-end">${{ quotation.total|floatformat:2 }}</td>
+                </tr>
+            </tfoot>
+        </table>
+        </div>
     </div>
 </div>
 

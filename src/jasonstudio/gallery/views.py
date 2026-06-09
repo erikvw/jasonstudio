@@ -548,7 +548,7 @@ def _build_invoice(order: Order) -> Invoice:
     customer = order.customer
 
     # Get or create invoice for this order
-    invoice = order.invoices.order_by("-created").first()
+    invoice = order.invoices.order_by("-date_created").first()
     if not invoice:
         invoice = Invoice(order=order)
 
@@ -562,25 +562,28 @@ def _build_invoice(order: Order) -> Invoice:
     digital_items = [s for s in selections if s.choice == "digital"]
     print_items = [s for s in selections if s.choice == "both"]
 
-    photographer_fee = order.photographer_hours * order.photographer_rate
+    quotation = order.quotation
 
-    # Build line items
+    # Build line items from the accepted quotation
     items = []
-    items.append(
-        {
-            "sort_order": 0,
-            "description": "Photography",
-            "filename": "",
-            "qty": order.photographer_hours,
-            "unit_cost": order.photographer_rate,
-            "price": photographer_fee,
-        }
-    )
+    for qi in quotation.line_items.all():
+        items.append(
+            {
+                "sort_order": qi.sort_order,
+                "description": qi.description,
+                "filename": "",
+                "qty": qi.qty,
+                "unit_cost": qi.unit_cost,
+                "price": qi.price,
+            }
+        )
+
+    next_sort = (items[-1]["sort_order"] + 1) if items else 0
 
     for i, s in enumerate(print_items):
         items.append(
             {
-                "sort_order": i + 1,
+                "sort_order": next_sort + i,
                 "description": f"Print & Digital — {s.get_print_size_display()}",
                 "filename": s.photo.filename,
                 "qty": Decimal("1"),
@@ -593,7 +596,7 @@ def _build_invoice(order: Order) -> Invoice:
     if digital_count:
         items.append(
             {
-                "sort_order": len(print_items) + 1,
+                "sort_order": next_sort + len(print_items),
                 "description": "Digital images",
                 "filename": "",
                 "qty": Decimal(digital_count),
@@ -604,7 +607,7 @@ def _build_invoice(order: Order) -> Invoice:
 
     # Compute totals
     subtotal = sum(item["price"] for item in items)
-    deposit = order.deposit_amount
+    deposit = quotation.deposit_amount
     photographer_profile = PhotographerProfile.objects.first()
     tax_rate = (
         Decimal(str(photographer_profile.tax_rate))
@@ -770,7 +773,10 @@ def customer_order_detail(
 
     download_tokens = DownloadToken.objects.filter(
         order=order, customer=customer
-    ).order_by("-created")
+    ).order_by("-date_created")
+
+    quotation = order.quotation
+    quotation_line_items = quotation.line_items.all() if quotation else []
 
     return render(
         request,
@@ -779,6 +785,8 @@ def customer_order_detail(
             "event": event,
             "customer": customer,
             "order": order,
+            "quotation": quotation,
+            "quotation_line_items": quotation_line_items,
             "digital_photos": digital_photos,
             "print_photos": print_photos,
             "print_sizes_by_photo": print_sizes_by_photo,
@@ -806,7 +814,7 @@ def update_order_status(
     from django.utils import timezone as tz
 
     new_status = request.POST.get("status", "")
-    update_fields = ["modified"]
+    update_fields = ["date_modified"]
 
     if new_status in {c.value for c in Order.Status}:
         order.status = new_status
@@ -815,34 +823,6 @@ def update_order_status(
         if new_status == Order.Status.PAID and not order.paid_at:
             order.paid_at = tz.now()
             update_fields.append("paid_at")
-
-    if request.POST.get("update_fee"):
-        from decimal import Decimal, InvalidOperation
-
-        try:
-            order.photographer_hours = Decimal(
-                request.POST.get("photographer_hours", "0")
-            )
-        except InvalidOperation, ValueError:
-            pass
-        else:
-            update_fields.append("photographer_hours")
-
-        try:
-            order.photographer_rate = Decimal(
-                request.POST.get("photographer_rate", "0")
-            )
-        except InvalidOperation, ValueError:
-            pass
-        else:
-            update_fields.append("photographer_rate")
-
-        try:
-            order.deposit_amount = Decimal(request.POST.get("deposit_amount", "0"))
-        except InvalidOperation, ValueError:
-            pass
-        else:
-            update_fields.append("deposit_amount")
 
     order.save(update_fields=update_fields)
 
@@ -1037,7 +1017,7 @@ def _build_quotation_totals(quotation: Quotation) -> None:
     quotation.tax_amount = tax_amount
     quotation.total = total
     quotation.save(
-        update_fields=["subtotal", "tax_rate", "tax_amount", "total", "modified"]
+        update_fields=["subtotal", "tax_rate", "tax_amount", "total", "date_modified"]
     )
 
 
@@ -1062,15 +1042,21 @@ def quotation_edit(
     )
 
     if request.method == "POST":
-        # Save deposit and validity
+        # Save date, deposit, and validity
+        import datetime
+
+        quote_date = request.POST.get("date", "").strip()
+        if quote_date:
+            try:
+                quotation.date = datetime.date.fromisoformat(quote_date)
+            except ValueError:
+                pass
         try:
             quotation.deposit_amount = Decimal(request.POST.get("deposit_amount", "0"))
         except InvalidOperation, ValueError:
             pass
         valid_until = request.POST.get("valid_until", "").strip()
         if valid_until:
-            import datetime
-
             try:
                 quotation.valid_until = datetime.date.fromisoformat(valid_until)
             except ValueError:
@@ -1079,7 +1065,13 @@ def quotation_edit(
             quotation.valid_until = None
         quotation.notes = request.POST.get("notes", "").strip()
         quotation.save(
-            update_fields=["deposit_amount", "valid_until", "notes", "modified"]
+            update_fields=[
+                "date",
+                "deposit_amount",
+                "valid_until",
+                "notes",
+                "date_modified",
+            ]
         )
 
         # Replace line items from form
@@ -1245,7 +1237,7 @@ def customer_quotation_decline(request: HttpRequest, event_id: str) -> HttpRespo
 
     if quotation.status in (Quotation.Status.SENT, Quotation.Status.DRAFT):
         quotation.status = Quotation.Status.DECLINED
-        quotation.save(update_fields=["status", "modified"])
+        quotation.save(update_fields=["status", "date_modified"])
 
     return redirect("customer_quotation_view", event_id=event.pk)
 

@@ -95,7 +95,9 @@ class TestServiceModel:
         assert "each" in values
 
     def test_ordering(self, photography_service, travel_service):
-        services = list(Service.objects.all())
+        services = list(
+            Service.objects.filter(pk__in=[photography_service.pk, travel_service.pk])
+        )
         assert services[0] == photography_service
         assert services[1] == travel_service
 
@@ -147,15 +149,6 @@ class TestQuotationAccept:
         assert order.event == quotation.event
         assert order.customer == quotation.customer
         assert order.quotation == quotation
-        assert order.deposit_amount == Decimal("100.00")
-
-    def test_accept_sets_photographer_hours_from_per_hour_item(
-        self, quotation_with_items, photographer_user
-    ):
-        order = quotation_with_items.accept(by="photographer")
-        # Photography item: qty=3 hours, unit_cost=150
-        assert order.photographer_hours == Decimal("3")
-        assert order.photographer_rate == Decimal("150.00")
 
     def test_accept_sets_status_and_timestamp(
         self, quotation_with_items, photographer_user
@@ -174,10 +167,11 @@ class TestQuotationAccept:
         existing_order = Order.objects.create(
             event=event_with_customer,
             customer=customer,
+            quotation=quotation_with_items,
         )
         order = quotation_with_items.accept(by="photographer")
         assert order.pk == existing_order.pk
-        assert order.deposit_amount == Decimal("100.00")
+        assert order.quotation == quotation_with_items
 
 
 class TestQuotationTotals:
