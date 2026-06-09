@@ -4,7 +4,13 @@ from decimal import Decimal
 import pytest
 from django.utils import timezone
 
-from jasonstudio.accounts.models import Invoice, InvoiceLineItem, Order, Payment
+from jasonstudio.accounts.models import (
+    Invoice,
+    InvoiceLineItem,
+    Order,
+    Payment,
+    Quotation,
+)
 from jasonstudio.gallery.models import (
     Event,
     Selection,
@@ -18,7 +24,10 @@ class TestOrderModel:
         assert len(order.ref) == 9  # ORD-00001
 
     def test_ref_sequential(self, event_with_customer, customer, db):
-        o1 = Order.objects.create(event=event_with_customer, customer=customer)
+        q1 = Quotation.objects.create(event=event_with_customer, customer=customer)
+        o1 = Order.objects.create(
+            event=event_with_customer, customer=customer, quotation=q1
+        )
         # Create another event/customer for a second order
         from django.contrib.auth.models import User
 
@@ -28,7 +37,8 @@ class TestOrderModel:
         c2 = CustomerModel.objects.create(user=user2)
         event2 = Event.objects.create(name="Event 2", date=datetime.date(2025, 7, 1))
         event2.customers.add(c2)
-        o2 = Order.objects.create(event=event2, customer=c2)
+        q2 = Quotation.objects.create(event=event2, customer=c2)
+        o2 = Order.objects.create(event=event2, customer=c2, quotation=q2)
         num1 = int(o1.ref.replace("ORD-", ""))
         num2 = int(o2.ref.replace("ORD-", ""))
         assert num2 == num1 + 1
@@ -201,3 +211,92 @@ class TestPaymentModel:
     def test_str_without_invoice(self, order):
         payment = Payment.objects.create(amount=Decimal("25.00"))
         assert "$25.00" in str(payment)
+
+    def test_date_defaults_to_today(self, order):
+        invoice = Invoice.objects.create(order=order)
+        payment = Payment.objects.create(invoice=invoice, amount=Decimal("10.00"))
+        assert payment.date == timezone.now().date()
+
+
+class TestDateChainValidation:
+    """Ensure quotation.date ≤ order.date ≤ invoice.date ≤ payment.date."""
+
+    def test_order_date_before_quotation_raises(self, quotation):
+        from django.core.exceptions import ValidationError
+
+        quotation.date = datetime.date(2025, 6, 15)
+        quotation.save(update_fields=["date"])
+        order = Order(
+            event=quotation.event,
+            customer=quotation.customer,
+            quotation=quotation,
+            date=datetime.date(2025, 6, 14),
+        )
+        with pytest.raises(ValidationError) as exc_info:
+            order.clean()
+        assert "date" in exc_info.value.message_dict
+
+    def test_order_date_equal_to_quotation_ok(self, quotation):
+        quotation.date = datetime.date(2025, 6, 15)
+        quotation.save(update_fields=["date"])
+        order = Order(
+            event=quotation.event,
+            customer=quotation.customer,
+            quotation=quotation,
+            date=datetime.date(2025, 6, 15),
+        )
+        order.clean()  # should not raise
+
+    def test_invoice_date_before_order_raises(self, order):
+        from django.core.exceptions import ValidationError
+
+        order.date = datetime.date(2025, 6, 15)
+        order.save(update_fields=["date"])
+        invoice = Invoice(
+            order=order,
+            date=datetime.date(2025, 6, 14),
+        )
+        with pytest.raises(ValidationError) as exc_info:
+            invoice.clean()
+        assert "date" in exc_info.value.message_dict
+
+    def test_invoice_date_equal_to_order_ok(self, order):
+        order.date = datetime.date(2025, 6, 15)
+        order.save(update_fields=["date"])
+        invoice = Invoice(order=order, date=datetime.date(2025, 6, 15))
+        invoice.clean()  # should not raise
+
+    def test_payment_date_before_invoice_raises(self, order):
+        from django.core.exceptions import ValidationError
+
+        invoice = Invoice.objects.create(order=order, date=datetime.date(2025, 6, 15))
+        payment = Payment(
+            invoice=invoice,
+            amount=Decimal("10.00"),
+            date=datetime.date(2025, 6, 14),
+        )
+        with pytest.raises(ValidationError) as exc_info:
+            payment.clean()
+        assert "date" in exc_info.value.message_dict
+
+    def test_payment_date_equal_to_invoice_ok(self, order):
+        invoice = Invoice.objects.create(order=order, date=datetime.date(2025, 6, 15))
+        payment = Payment(
+            invoice=invoice,
+            amount=Decimal("10.00"),
+            date=datetime.date(2025, 6, 15),
+        )
+        payment.clean()  # should not raise
+
+
+class TestAuditFields:
+    """Verify audit fields are auto-populated."""
+
+    def test_date_created_auto_set(self, order):
+        assert order.date_created is not None
+
+    def test_date_modified_auto_set(self, order):
+        assert order.date_modified is not None
+
+    def test_history_recorded(self, quotation):
+        assert quotation.history.count() >= 1

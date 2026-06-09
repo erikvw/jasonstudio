@@ -44,35 +44,59 @@
     </div>
 </div>
 
-<!-- Photographer Fee -->
+<!-- Quotation Summary -->
 <div class="card mb-4">
-    <div class="card-header"><strong>Photographer Fee</strong></div>
-    <div class="card-body">
-        <form method="post" action="{% url 'update_order_status' event.pk customer.pk %}">
-            {% csrf_token %}
-            <input type="hidden" name="status" value="{{ order.status }}">
-            <input type="hidden" name="update_fee" value="1">
-            <div class="row g-2 align-items-end">
-                <div class="col-6 col-sm-auto">
-                    <label class="form-label mb-0 small">Hours</label>
-                    <input type="number" name="photographer_hours" value="{{ order.photographer_hours }}"
-                           step="0.25" min="0" class="form-control form-control-sm">
-                </div>
-                <div class="col-6 col-sm-auto">
-                    <label class="form-label mb-0 small">Rate ($/hr)</label>
-                    <input type="number" name="photographer_rate" value="{{ order.photographer_rate }}"
-                           step="0.01" min="0" class="form-control form-control-sm">
-                </div>
-                <div class="col-6 col-sm-auto">
-                    <label class="form-label mb-0 small">Deposit ($)</label>
-                    <input type="number" name="deposit_amount" value="{{ order.deposit_amount }}"
-                           step="0.01" min="0" class="form-control form-control-sm">
-                </div>
-                <div class="col-6 col-sm-auto">
-                    <button type="submit" class="btn btn-sm btn-primary w-100">Save</button>
-                </div>
-            </div>
-        </form>
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <strong>Quotation {{ quotation.quote_number }}</strong>
+        <a href="{% url 'quotation_view' event.pk customer.pk %}" class="btn btn-outline-dark btn-sm">
+            View Full Quote
+        </a>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+        <table class="table table-sm mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Description</th>
+                    <th class="text-end">Qty</th>
+                    <th class="text-end">Unit Cost</th>
+                    <th class="text-end">Price</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in quotation_line_items %}
+                <tr>
+                    <td>{{ item.description }}</td>
+                    <td class="text-end">{{ item.qty|floatformat:2 }}</td>
+                    <td class="text-end">${{ item.unit_cost|floatformat:2 }}</td>
+                    <td class="text-end">${{ item.price|floatformat:2 }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr>
+                    <td colspan="3" class="text-end">Subtotal</td>
+                    <td class="text-end">${{ quotation.subtotal|floatformat:2 }}</td>
+                </tr>
+                {% if quotation.deposit_amount %}
+                <tr>
+                    <td colspan="3" class="text-end">Deposit</td>
+                    <td class="text-end">-${{ quotation.deposit_amount|floatformat:2 }}</td>
+                </tr>
+                {% endif %}
+                {% if quotation.tax_amount %}
+                <tr>
+                    <td colspan="3" class="text-end">Tax ({{ quotation.tax_rate|floatformat:2 }}%)</td>
+                    <td class="text-end">${{ quotation.tax_amount|floatformat:2 }}</td>
+                </tr>
+                {% endif %}
+                <tr class="fw-bold">
+                    <td colspan="3" class="text-end">Total</td>
+                    <td class="text-end">${{ quotation.total|floatformat:2 }}</td>
+                </tr>
+            </tfoot>
+        </table>
+        </div>
     </div>
 </div>
 
@@ -81,7 +105,7 @@
     <div class="card-header"><strong>Downloads</strong></div>
     <div class="card-body">
         {% if order.is_paid %}
-        <div class="d-flex flex-wrap gap-2">
+        <div class="d-flex flex-wrap gap-2 mb-3">
             {% if print_photos %}
             <a href="{% url 'download_zip' event.pk customer.pk 'print' %}"
                class="btn btn-outline-success btn-sm">
@@ -95,6 +119,41 @@
             </a>
             {% endif %}
         </div>
+        <hr>
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div>
+                <strong>Email download link to customer</strong>
+                <br><small class="text-muted">
+                    {% if customer.user.email %}
+                    Sends to {{ customer.user.email }}
+                    {% else %}
+                    <span class="text-danger">No email address on file</span>
+                    {% endif %}
+                </small>
+            </div>
+            <form method="post" action="{% url 'send_download_email' event.pk customer.pk %}">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-outline-primary btn-sm"
+                        {% if not customer.user.email %}disabled{% endif %}>
+                    <i class="fa-solid fa-envelope"></i> Send Download Email
+                </button>
+            </form>
+        </div>
+        {% if download_tokens %}
+        <div class="mt-3">
+            <small class="text-muted">Previously sent:</small>
+            <ul class="list-unstyled mb-0 mt-1">
+                {% for dt in download_tokens %}
+                <li class="small">
+                    <i class="fa-solid fa-envelope"></i>
+                    {{ dt.sent_at|date:"N j, Y g:i A" }}
+                    — downloads: {{ dt.download_count }}
+                    {% if dt.is_expired %}<span class="badge bg-secondary">Expired</span>{% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
         {% else %}
         <p class="text-muted mb-0">
             <i class="fa-solid fa-lock"></i> Downloads available after payment is confirmed.

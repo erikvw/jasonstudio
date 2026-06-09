@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Download Photos — {{ event.name }}{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6 text-center py-5">
+        <h2>Your Photos Are Ready</h2>
+        <p class="text-muted mb-4">{{ event.name }} — {{ photo_count }} photo{{ photo_count|pluralize }}</p>
+
+        <a href="{% url 'token_download_file' token.token %}" class="btn btn-primary btn-lg">
+            <i class="fa-solid fa-download"></i> Download Photos
+        </a>
+
+        <p class="text-muted mt-4 small">
+            This link expires on {{ token.expires_at|date:"N j, Y" }}.
+        </p>
+    </div>
+</div>
+{% endblock %}

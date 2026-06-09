@@ -106,7 +106,7 @@ def customer_edit(request: HttpRequest, customer_id: str) -> HttpResponse:
             customer.user.save(update_fields=["first_name", "last_name", "email"])
             customer.company_name = form.cleaned_data["company_name"]
             customer.phone = form.cleaned_data["phone"]
-            customer.save(update_fields=["company_name", "phone", "modified"])
+            customer.save(update_fields=["company_name", "phone", "date_modified"])
             return redirect("customer_list")
     else:
         form = CustomerForm(
@@ -136,7 +136,7 @@ def customer_toggle_active(request: HttpRequest, customer_id: str) -> HttpRespon
     customer.is_active = not customer.is_active
     customer.user.is_active = customer.is_active
     customer.user.save(update_fields=["is_active"])
-    customer.save(update_fields=["is_active", "modified"])
+    customer.save(update_fields=["is_active", "date_modified"])
     return redirect("customer_list")
 
 

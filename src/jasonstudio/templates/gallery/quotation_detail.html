@@ -64,7 +64,7 @@
             <div class="col-sm-6 text-end">
                 <h4>Quotation</h4>
                 <p class="mb-0"><strong>Quote #:</strong> {{ quotation.quote_number }}</p>
-                <p class="mb-1"><strong>Date:</strong> {{ quotation.created|date:"N j, Y" }}</p>
+                <p class="mb-1"><strong>Date:</strong> {{ quotation.date|date:"N j, Y" }}</p>
                 {% if quotation.valid_until %}
                 <p class="mb-0"><strong>Valid Until:</strong> {{ quotation.valid_until|date:"N j, Y" }}</p>
                 {% endif %}

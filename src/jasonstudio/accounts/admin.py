@@ -43,13 +43,13 @@ admin.site.register(User, UserAdmin)
 
 @admin.register(Customer)
 class CustomerAdmin(admin.ModelAdmin):
-    list_display = ["__str__", "phone", "created"]
+    list_display = ["__str__", "phone", "date_created"]
     search_fields = ["user__first_name", "user__last_name", "user__email"]
 
 
 @admin.register(PhotographerProfile)
 class PhotographerProfileAdmin(admin.ModelAdmin):
-    list_display = ["user", "business_name", "phone", "email", "created"]
+    list_display = ["user", "business_name", "phone", "email", "date_created"]
     search_fields = ["user__username", "user__first_name", "user__last_name"]
     fieldsets = [
         (None, {"fields": ["user", "business_name"]}),
@@ -88,7 +88,7 @@ class QuotationAdmin(admin.ModelAdmin):
         "status",
         "total",
         "valid_until",
-        "created",
+        "date_created",
     ]
     list_filter = ["status"]
     search_fields = ["quote_number", "customer__user__username", "event__name"]
@@ -105,7 +105,7 @@ class OrderAdmin(admin.ModelAdmin):
         "status",
         "paid_at",
         "download_count",
-        "created",
+        "date_created",
     ]
     list_filter = ["status", "event"]
     search_fields = ["ref", "customer__user__username", "event__name"]
@@ -121,7 +121,7 @@ class InvoiceLineItemInline(admin.TabularInline):
 class PaymentInline(admin.TabularInline):
     model = Payment
     extra = 1
-    fields = ["amount", "method", "reference", "received_at", "notes"]
+    fields = ["amount", "method", "reference", "date", "notes"]
 
 
 @admin.register(Invoice)
@@ -132,7 +132,7 @@ class InvoiceAdmin(admin.ModelAdmin):
         "status",
         "amount_due",
         "issued_at",
-        "created",
+        "date_created",
     ]
     list_filter = ["status"]
     search_fields = ["invoice_number", "order__ref"]
@@ -149,6 +149,6 @@ class InvoiceAdmin(admin.ModelAdmin):
 
 @admin.register(Payment)
 class PaymentAdmin(admin.ModelAdmin):
-    list_display = ["invoice", "amount", "method", "reference", "received_at"]
+    list_display = ["invoice", "amount", "method", "reference", "date"]
     list_filter = ["method"]
     search_fields = ["invoice__invoice_number", "reference"]

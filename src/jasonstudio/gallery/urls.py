@@ -106,4 +106,18 @@ urlpatterns = [
         views.customer_quotation_decline,
         name="customer_quotation_decline",
     ),
+    # Download tokens (email-based)
+    path(
+        "event/<str:event_id>/orders/<str:customer_id>/send-download-email/",
+        views.send_download_email,
+        name="send_download_email",
+    ),
+    path(
+        "download/<str:token>/", views.token_download_page, name="token_download_page"
+    ),
+    path(
+        "download/<str:token>/file/",
+        views.token_download_file,
+        name="token_download_file",
+    ),
 ]

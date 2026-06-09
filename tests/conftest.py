@@ -4,7 +4,13 @@ from decimal import Decimal
 import pytest
 from django.contrib.auth.models import User
 
-from jasonstudio.accounts.models import Customer, Order, PhotographerProfile
+from jasonstudio.accounts.models import (
+    Customer,
+    Order,
+    PhotographerProfile,
+    Quotation,
+    QuotationLineItem,
+)
 from jasonstudio.gallery.models import Event, Photo
 
 
@@ -87,12 +93,31 @@ def photos(event) -> list[Photo]:
 
 
 @pytest.fixture
-def order(event_with_customer, customer) -> Order:
-    return Order.objects.create(
+def quotation(event_with_customer, customer) -> Quotation:
+    q = Quotation.objects.create(
         event=event_with_customer,
         customer=customer,
-        photographer_hours=Decimal("2.00"),
-        photographer_rate=Decimal("150.00"),
+        deposit_amount=Decimal("100.00"),
+        subtotal=Decimal("300.00"),
+        total=Decimal("300.00"),
+    )
+    QuotationLineItem.objects.create(
+        quotation=q,
+        description="Photography",
+        qty=Decimal("2.00"),
+        unit_cost=Decimal("150.00"),
+        price=Decimal("300.00"),
+        sort_order=0,
+    )
+    return q
+
+
+@pytest.fixture
+def order(quotation) -> Order:
+    return Order.objects.create(
+        event=quotation.event,
+        customer=quotation.customer,
+        quotation=quotation,
     )
 
 
