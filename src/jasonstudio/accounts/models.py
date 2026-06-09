@@ -1,4 +1,6 @@
+import secrets
 import uuid
+from datetime import timedelta
 
 from django.conf import settings
 from django.db import models
@@ -465,3 +467,62 @@ class Payment(models.Model):
     def __str__(self) -> str:
         inv = self.invoice.invoice_number if self.invoice else "—"
         return f"${self.amount} ({self.get_method_display()}) — {inv}"
+
+
+def _generate_download_token() -> str:
+    return secrets.token_urlsafe(32)
+
+
+class DownloadToken(models.Model):
+    """A unique, time-limited download link sent to a customer's email."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    token = models.CharField(
+        max_length=64,
+        unique=True,
+        default=_generate_download_token,
+        editable=False,
+    )
+    order = models.ForeignKey(
+        Order,
+        on_delete=models.CASCADE,
+        related_name="download_tokens",
+    )
+    customer = models.ForeignKey(
+        Customer,
+        on_delete=models.CASCADE,
+        related_name="download_tokens",
+    )
+    expires_at = models.DateTimeField(
+        help_text="Token expires after this datetime.",
+    )
+    sent_to_email = EncryptedEmailField(
+        blank=True,
+        null=True,
+        default="",
+        help_text="Email address the link was sent to.",
+    )
+    sent_at = models.DateTimeField(null=True, blank=True)
+    download_count = models.PositiveIntegerField(default=0)
+    created = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created"]
+
+    def __str__(self) -> str:
+        return f"Download token for {self.order.ref} — {self.customer}"
+
+    def save(self, *args, **kwargs) -> None:
+        if not self.expires_at:
+            self.expires_at = timezone.now() + timedelta(
+                days=getattr(settings, "DOWNLOAD_TOKEN_EXPIRY_DAYS", 30)
+            )
+        super().save(*args, **kwargs)
+
+    @property
+    def is_expired(self) -> bool:
+        return timezone.now() > self.expires_at
+
+    @property
+    def is_valid(self) -> bool:
+        return not self.is_expired

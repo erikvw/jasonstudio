@@ -3,16 +3,20 @@ from io import BytesIO
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.core.files.base import ContentFile
+from django.db.models import F
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from PIL import Image, ImageOps
 
 from jasonstudio.accounts.models import (
+    DownloadToken,
     Invoice,
     InvoiceLineItem,
     Order,
+    PhotographerProfile,
     Quotation,
     QuotationLineItem,
 )
@@ -738,6 +742,10 @@ def customer_order_detail(
         customer=customer, photo__event=event, choice="reject"
     ).count()
 
+    download_tokens = DownloadToken.objects.filter(
+        order=order, customer=customer
+    ).order_by("-created")
+
     return render(
         request,
         "gallery/customer_order_detail.html",
@@ -750,6 +758,7 @@ def customer_order_detail(
             "print_sizes_by_photo": print_sizes_by_photo,
             "digital_delivery_count": len(digital_photos) + len(print_photos),
             "rejected_count": rejected,
+            "download_tokens": download_tokens,
         },
     )
 
@@ -1329,6 +1338,152 @@ def shared_download_file(request: HttpRequest, code: str) -> HttpResponse:
 
     buffer.seek(0)
     filename = f"{event.name}_digital.zip"
+    response = HttpResponse(buffer.read(), content_type="application/zip")
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
+
+
+# --- Download Token (email-based download) ---
+
+
+@login_required
+@require_POST
+def send_download_email(
+    request: HttpRequest, event_id: str, customer_id: str
+) -> HttpResponse:
+    """Photographer sends a download link to the customer's email."""
+    from django.contrib import messages
+    from django.core.mail import send_mail
+    from django.template.loader import render_to_string
+
+    if not _is_photographer(request.user):
+        return redirect("home")
+
+    from jasonstudio.accounts.models import Customer as CustomerModel
+
+    event = get_object_or_404(Event, pk=event_id)
+    customer = get_object_or_404(CustomerModel, pk=customer_id)
+    order = get_object_or_404(Order, event=event, customer=customer)
+
+    if not order.is_paid:
+        messages.error(request, "Order must be paid before sending a download link.")
+        return redirect(
+            "customer_order_detail", event_id=event.pk, customer_id=customer.pk
+        )
+
+    # Resolve the customer's email
+    email = customer.user.email
+    if not email:
+        messages.error(
+            request,
+            "This customer has no email address. "
+            "Add one before sending a download link.",
+        )
+        return redirect(
+            "customer_order_detail", event_id=event.pk, customer_id=customer.pk
+        )
+
+    # Create the token
+    token = DownloadToken.objects.create(
+        order=order,
+        customer=customer,
+        sent_to_email=email,
+    )
+
+    photographer = PhotographerProfile.objects.first()
+    download_url = request.build_absolute_uri(f"/download/{token.token}/")
+
+    subject = render_to_string(
+        "accounts/download_email_subject.txt",
+        {"event_name": event.name},
+    ).strip()
+
+    body = render_to_string(
+        "accounts/download_email.txt",
+        {
+            "customer_name": customer.user.get_full_name() or customer.user.username,
+            "event_name": event.name,
+            "download_url": download_url,
+            "expires_at": token.expires_at,
+            "photographer_name": (photographer.business_name if photographer else "us"),
+        },
+    )
+
+    from_email = getattr(settings, "DEFAULT_FROM_EMAIL", None)
+    if photographer and photographer.email:
+        from_email = photographer.email
+
+    send_mail(subject, body, from_email, [email])
+
+    token.sent_at = timezone.now()
+    token.save(update_fields=["sent_at"])
+
+    messages.success(request, f"Download link sent to {email}.")
+    return redirect("customer_order_detail", event_id=event.pk, customer_id=customer.pk)
+
+
+def token_download_page(request: HttpRequest, token: str) -> HttpResponse:
+    """Public page where customer downloads their photos via a token link."""
+    dl_token = get_object_or_404(DownloadToken, token=token)
+
+    if dl_token.is_expired:
+        return render(request, "gallery/token_expired.html", {"token": dl_token})
+
+    order = dl_token.order
+    event = order.event
+
+    selections = (
+        Selection.objects.filter(customer=dl_token.customer, photo__event=event)
+        .exclude(choice="reject")
+        .select_related("photo")
+    )
+
+    return render(
+        request,
+        "gallery/token_download.html",
+        {
+            "token": dl_token,
+            "order": order,
+            "event": event,
+            "photo_count": selections.count(),
+        },
+    )
+
+
+def token_download_file(request: HttpRequest, token: str) -> HttpResponse:
+    """Serve the zip file for a valid download token."""
+    import zipfile
+
+    dl_token = get_object_or_404(DownloadToken, token=token)
+
+    if dl_token.is_expired:
+        return render(request, "gallery/token_expired.html", {"token": dl_token})
+
+    order = dl_token.order
+    event = order.event
+
+    photos = [
+        s.photo
+        for s in Selection.objects.filter(
+            customer=dl_token.customer, photo__event=event
+        )
+        .exclude(choice="reject")
+        .select_related("photo")
+    ]
+
+    # Increment counts
+    dl_token.download_count += 1
+    dl_token.save(update_fields=["download_count"])
+    Order.objects.filter(pk=order.pk).update(download_count=F("download_count") + 1)
+
+    buffer = BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for photo in photos:
+            if photo.original:
+                zf.write(photo.original.path, photo.filename or photo.original.name)
+
+    buffer.seek(0)
+    filename = f"{event.name}_photos.zip"
     response = HttpResponse(buffer.read(), content_type="application/zip")
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
     return response

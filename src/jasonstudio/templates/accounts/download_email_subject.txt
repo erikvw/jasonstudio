@@ -1,0 +1,1 @@
+Your photos from "{{ event_name }}" are ready
