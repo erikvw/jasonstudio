@@ -43,12 +43,19 @@ def _get_customer(user):
 
 
 def home(request: HttpRequest) -> HttpResponse:
+    from jasonstudio.accounts.models import PhotographerProfile
+
     if request.user.is_authenticated:
         if _is_photographer(request.user):
             return redirect("photographer_dashboard")
         if _get_customer(request.user):
             return redirect("customer_dashboard")
-    return render(request, "gallery/home.html")
+    show_setup = (
+        request.user.is_authenticated
+        and request.user.is_superuser
+        and not PhotographerProfile.objects.exists()
+    )
+    return render(request, "gallery/home.html", {"show_photographer_setup": show_setup})
 
 
 @login_required
