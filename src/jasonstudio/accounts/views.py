@@ -6,8 +6,8 @@ from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
-from .forms import CustomerForm
-from .models import Customer
+from .forms import CustomerForm, PhotographerSetupForm
+from .models import Customer, PhotographerProfile
 
 
 def _is_photographer(user) -> bool:
@@ -175,3 +175,36 @@ def customer_delete(request: HttpRequest, customer_id: str) -> HttpResponse:
     user.delete()
     messages.success(request, "Customer deleted.")
     return redirect("customer_list")
+
+
+@login_required
+def photographer_setup(request: HttpRequest) -> HttpResponse:
+    """Create the first photographer profile.
+
+    Only available to superusers when no PhotographerProfile exists yet.
+    """
+    if not request.user.is_superuser:
+        return redirect("home")
+    if PhotographerProfile.objects.exists():
+        return redirect("home")
+
+    if request.method == "POST":
+        form = PhotographerSetupForm(request.POST)
+        if form.is_valid():
+            PhotographerProfile.objects.create(
+                user=request.user,
+                business_name=form.cleaned_data["business_name"],
+                phone=form.cleaned_data.get("phone", ""),
+                email=form.cleaned_data.get("email", ""),
+                address=form.cleaned_data.get("address", ""),
+                payment_instructions=form.cleaned_data.get("payment_instructions", ""),
+                payment_terms=form.cleaned_data.get(
+                    "payment_terms", "Due within 30 days"
+                ),
+                tax_rate=form.cleaned_data.get("tax_rate") or 0,
+            )
+            return redirect("photographer_dashboard")
+    else:
+        form = PhotographerSetupForm()
+
+    return render(request, "accounts/photographer_setup.html", {"form": form})
