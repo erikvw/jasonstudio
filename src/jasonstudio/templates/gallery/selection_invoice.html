@@ -3,21 +3,21 @@
 {% block title %}Invoice {{ invoice.invoice_number }} — {{ event.name }} — Jason Studio{% endblock %}
 {% block extra_head %}
 <style>
+    @page { size: portrait; }
     @media print {
         .navbar, .no-print { display: none !important; }
         .card { border: none !important; box-shadow: none !important; }
     }
     .stamp-paid, .stamp-unpaid {
-        position: absolute; top: 20px; right: 20px;
         border: 3px solid; font-size: 1.2rem; font-weight: bold;
-        padding: 4px 12px; transform: rotate(12deg); opacity: 0.6;
+        padding: 4px 16px; opacity: 0.6; text-align: center;
+        display: inline-block;
     }
     .stamp-paid { border-color: #28a745; color: #28a745; }
     .stamp-unpaid { border-color: #dc3545; color: #dc3545; }
     @media (min-width: 576px) {
         .stamp-paid, .stamp-unpaid {
-            top: 40px; right: 40px; border-width: 4px;
-            font-size: 2rem; padding: 5px 20px;
+            border-width: 4px; font-size: 2rem; padding: 5px 24px;
         }
     }
 </style>
@@ -32,13 +32,15 @@
     <button class="btn btn-outline-dark" onclick="window.print()"><i class="fa-solid fa-print"></i> Print</button>
 </div>
 
-<div class="card position-relative">
+<div class="card">
     {% if order %}
+    <div class="text-center pt-3 pb-0 no-print">
     {% if order.is_paid %}
-    <div class="stamp-paid">PAID</div>
+    <span class="stamp-paid">PAID</span>
     {% else %}
-    <div class="stamp-unpaid">UNPAID</div>
+    <span class="stamp-unpaid">UNPAID</span>
     {% endif %}
+    </div>
     {% endif %}
 
     <div class="card-body">

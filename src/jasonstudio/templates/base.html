@@ -108,6 +108,10 @@
         }
     });
 })();
+// Enable Bootstrap tooltips site-wide
+document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function(el) {
+    new bootstrap.Tooltip(el);
+});
 </script>
 {% block extra_js %}{% endblock %}
 </body>

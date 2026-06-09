@@ -3,7 +3,7 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-start mb-4 flex-wrap gap-2">
     <h2 class="mb-0">Quotation for {{ customer.user.get_full_name|default:customer.user.username }}</h2>
-    <a href="{% url 'event_orders' event.pk %}" class="btn btn-outline-secondary btn-sm">Back to Orders</a>
+    <a href="{% url 'event_orders' event.pk %}" class="btn btn-outline-secondary btn-sm">Back to Quotes &amp; Orders</a>
 </div>
 
 <div class="row mb-3">

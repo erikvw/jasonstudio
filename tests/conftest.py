@@ -6,7 +6,9 @@ from django.contrib.auth.models import User
 
 from jasonstudio.accounts.models import (
     Customer,
+    Invoice,
     Order,
+    Payment,
     PhotographerProfile,
     Quotation,
     QuotationLineItem,
@@ -122,7 +124,20 @@ def order(quotation) -> Order:
 
 
 @pytest.fixture
-def paid_order(order) -> Order:
-    order.status = Order.Status.PAID
-    order.save()
+def invoice(order) -> Invoice:
+    return Invoice.objects.create(
+        order=order,
+        subtotal=Decimal("300.00"),
+        amount_due=Decimal("300.00"),
+    )
+
+
+@pytest.fixture
+def paid_order(order, invoice) -> Order:
+    """Create a payment against the invoice, which marks the invoice as paid."""
+    Payment.objects.create(
+        invoice=invoice,
+        amount=invoice.amount_due,
+        method=Payment.Method.ETRANSFER,
+    )
     return order

@@ -80,3 +80,8 @@ LOGIN_URL = "/accounts/login/"
 
 WATERMARK_TEXT = "PROOF"
 WATERMARK_OPACITY = 75
+
+# Google Drive integration (for sharing download zips with customers)
+# See docs/google_drive_setup.md for setup instructions.
+GOOGLE_DRIVE_CREDENTIALS_FILE = env("GOOGLE_DRIVE_CREDENTIALS_FILE", default="")
+GOOGLE_DRIVE_FOLDER_ID = env("GOOGLE_DRIVE_FOLDER_ID", default="")

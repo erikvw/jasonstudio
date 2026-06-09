@@ -43,30 +43,17 @@ class TestOrderModel:
         num2 = int(o2.ref.replace("ORD-", ""))
         assert num2 == num1 + 1
 
-    def test_paid_at_auto_set_on_paid(self, order):
-        assert order.paid_at is None
-        order.status = Order.Status.PAID
-        order.save()
-        assert order.paid_at is not None
-
-    def test_paid_at_not_overwritten(self, order):
-        order.status = Order.Status.PAID
-        order.save()
-        original_paid_at = order.paid_at
-        order.notes = "updated"
-        order.save()
-        assert order.paid_at == original_paid_at
-
-    def test_is_paid(self, order):
+    def test_is_paid_false_without_payment(self, order):
         assert order.is_paid is False
-        order.status = Order.Status.PAID
-        order.save()
-        assert order.is_paid is True
 
-    def test_is_paid_includes_later_statuses(self, order):
-        for status in [Order.Status.IN_PROGRESS, Order.Status.DELIVERED]:
-            order.status = status
-            assert order.is_paid is True
+    def test_is_paid_true_with_payment(self, paid_order):
+        assert paid_order.is_paid is True
+
+    def test_paid_at_returns_payment_date(self, paid_order):
+        assert paid_order.paid_at is not None
+
+    def test_paid_at_none_without_payment(self, order):
+        assert order.paid_at is None
 
     def test_download_available_when_paid(self, paid_order):
         assert paid_order.download_available is True
@@ -74,25 +61,20 @@ class TestOrderModel:
     def test_download_not_available_when_unpaid(self, order):
         assert order.download_available is False
 
-    def test_download_expires_after_30_days(self, paid_order):
-        paid_order.paid_at = timezone.now() - datetime.timedelta(days=31)
-        paid_order.save()
+    def test_download_expires_after_30_days(self, paid_order, invoice):
+        # Move the payment's date_created back 31 days
+        payment = invoice.payments.first()
+        Payment.objects.filter(pk=payment.pk).update(
+            date_created=timezone.now() - datetime.timedelta(days=31)
+        )
         assert paid_order.download_available is False
 
-    def test_download_available_within_30_days(self, paid_order):
-        paid_order.paid_at = timezone.now() - datetime.timedelta(days=29)
-        paid_order.save()
+    def test_download_available_within_30_days(self, paid_order, invoice):
+        payment = invoice.payments.first()
+        Payment.objects.filter(pk=payment.pk).update(
+            date_created=timezone.now() - datetime.timedelta(days=29)
+        )
         assert paid_order.download_available is True
-
-    def test_download_available_legacy_no_paid_at(self, order):
-        """Orders marked paid before paid_at field existed should allow download."""
-        order.status = Order.Status.PAID
-        order.save()
-        # Simulate legacy by clearing paid_at
-        Order.objects.filter(pk=order.pk).update(paid_at=None)
-        order.refresh_from_db()
-        assert order.paid_at is None
-        assert order.download_available is True
 
 
 class TestInvoiceModel:
@@ -171,9 +153,12 @@ class TestShareLinkModel:
         )
         assert link.is_valid is False
 
-    def test_is_invalid_when_download_expired(self, paid_order):
-        paid_order.paid_at = timezone.now() - datetime.timedelta(days=31)
-        paid_order.save()
+    def test_is_invalid_when_download_expired(self, paid_order, invoice):
+        # Move payment date_created back 31 days to expire downloads
+        payment = invoice.payments.first()
+        Payment.objects.filter(pk=payment.pk).update(
+            date_created=timezone.now() - datetime.timedelta(days=31)
+        )
         link = ShareLink.objects.create(
             order=paid_order, code=ShareLink.generate_code()
         )
@@ -199,23 +184,48 @@ class TestPaymentModel:
         assert payment.invoice == invoice
         assert invoice.payments.count() == 1
 
-    def test_str_with_invoice(self, order):
+    def test_receipt_number_auto_generated(self, order):
+        invoice = Invoice.objects.create(order=order)
+        payment = Payment.objects.create(
+            invoice=invoice,
+            amount=Decimal("50.00"),
+        )
+        assert payment.receipt_number.startswith("REC-")
+        assert len(payment.receipt_number) == 9
+
+    def test_str_contains_receipt_and_amount(self, order):
         invoice = Invoice.objects.create(order=order)
         payment = Payment.objects.create(
             invoice=invoice,
             amount=Decimal("50.00"),
         )
         assert "$50.00" in str(payment)
+        assert payment.receipt_number in str(payment)
         assert invoice.invoice_number in str(payment)
-
-    def test_str_without_invoice(self, order):
-        payment = Payment.objects.create(amount=Decimal("25.00"))
-        assert "$25.00" in str(payment)
 
     def test_date_defaults_to_today(self, order):
         invoice = Invoice.objects.create(order=order)
         payment = Payment.objects.create(invoice=invoice, amount=Decimal("10.00"))
         assert payment.date == timezone.now().date()
+
+    def test_payment_marks_invoice_as_paid(self, order):
+        invoice = Invoice.objects.create(order=order)
+        assert invoice.status == Invoice.Status.DRAFT
+        Payment.objects.create(
+            invoice=invoice,
+            amount=Decimal("100.00"),
+        )
+        invoice.refresh_from_db()
+        assert invoice.status == Invoice.Status.PAID
+
+    def test_payment_makes_order_is_paid_true(self, order):
+        invoice = Invoice.objects.create(order=order)
+        assert order.is_paid is False
+        Payment.objects.create(
+            invoice=invoice,
+            amount=Decimal("100.00"),
+        )
+        assert order.is_paid is True
 
 
 class TestDateChainValidation:

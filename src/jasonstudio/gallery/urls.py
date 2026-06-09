@@ -21,14 +21,39 @@ urlpatterns = [
         name="customer_order_detail",
     ),
     path(
-        "event/<str:event_id>/orders/<str:customer_id>/status/",
-        views.update_order_status,
-        name="update_order_status",
+        "event/<str:event_id>/orders/<str:customer_id>/payment/",
+        views.record_payment,
+        name="record_payment",
+    ),
+    path(
+        "event/<str:event_id>/orders/<str:customer_id>/receipt/",
+        views.payment_receipt,
+        name="payment_receipt",
+    ),
+    path(
+        "event/<str:event_id>/orders/<str:customer_id>/fulfilment/",
+        views.update_order_fulfilment,
+        name="update_order_fulfilment",
+    ),
+    path(
+        "event/<str:event_id>/notes/",
+        views.event_planning_notes,
+        name="event_planning_notes",
     ),
     path(
         "event/<str:event_id>/orders/<str:customer_id>/download/<str:zip_type>/",
         views.download_zip,
         name="download_zip",
+    ),
+    path(
+        "event/<str:event_id>/download-all/",
+        views.download_event_photos,
+        name="download_event_photos",
+    ),
+    path(
+        "event/<str:event_id>/orders/<str:customer_id>/upload-to-drive/",
+        views.upload_to_google_drive,
+        name="upload_to_google_drive",
     ),
     path(
         "event/<str:event_id>/regenerate-thumbnails/",
@@ -90,6 +115,11 @@ urlpatterns = [
         "photographer/event/<str:event_id>/quote/<str:customer_id>/accept/",
         views.quotation_accept,
         name="quotation_accept",
+    ),
+    path(
+        "photographer/event/<str:event_id>/quote/<str:customer_id>/delete/",
+        views.quotation_delete,
+        name="quotation_delete",
     ),
     path(
         "my-quotes/<str:event_id>/",
