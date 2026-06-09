@@ -461,14 +461,40 @@ def manage_event(request: HttpRequest, event_id: str | None = None) -> HttpRespo
         event = None
 
     if request.method == "POST":
-        form = EventForm(request.POST, instance=event)
+        # Merge primary_customer + friends into the customers M2M field
+        post_data = request.POST.copy()
+        customer_ids = list(request.POST.getlist("friends"))
+        primary = request.POST.get("primary_customer", "")
+        if primary and primary not in customer_ids:
+            customer_ids.insert(0, primary)
+        post_data.setlist("customers", customer_ids)
+
+        form = EventForm(post_data, instance=event)
         if form.is_valid():
             form.save()
             return redirect("photographer_dashboard")
     else:
         form = EventForm(instance=event)
 
-    return render(request, "gallery/manage_event.html", {"form": form, "event": event})
+    # Determine primary customer and friends for the template
+    primary_customer_id = ""
+    friend_ids = set()
+    if event:
+        customer_ids = [str(c.pk) for c in event.customers.all()]
+        if customer_ids:
+            primary_customer_id = customer_ids[0]
+            friend_ids = {cid for cid in customer_ids[1:]}
+
+    return render(
+        request,
+        "gallery/manage_event.html",
+        {
+            "form": form,
+            "event": event,
+            "primary_customer_id": primary_customer_id,
+            "friend_ids": friend_ids,
+        },
+    )
 
 
 @login_required
