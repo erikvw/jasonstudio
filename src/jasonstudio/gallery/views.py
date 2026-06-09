@@ -869,7 +869,7 @@ def record_payment(
         payment_date = request.POST.get("date", "").strip()
         try:
             amount = Decimal(request.POST.get("amount", "0"))
-        except (InvalidOperation, ValueError):
+        except InvalidOperation, ValueError:
             amount = Decimal("0")
         method = request.POST.get("method", Payment.Method.ETRANSFER)
         reference = request.POST.get("reference", "").strip()
