@@ -1,0 +1,11 @@
+Hi {{ customer_name }},
+
+Your photos from "{{ event_name }}" are ready for download.
+
+Click the link below to download your photos:
+
+{{ download_url }}
+
+This link will expire on {{ expires_at|date:"N j, Y" }}.
+
+Thank you for choosing {{ photographer_name }}.
