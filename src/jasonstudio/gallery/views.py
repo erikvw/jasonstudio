@@ -991,6 +991,24 @@ def delivery_detail(request: HttpRequest, delivery_id: str) -> HttpResponse:
     )
 
 
+@require_POST
+@login_required
+def delivery_delete(request: HttpRequest, delivery_id: str) -> HttpResponse:
+    """Delete a delivery note and update the order status."""
+    if not _is_photographer(request.user):
+        return redirect("home")
+
+    delivery = get_object_or_404(Delivery, pk=delivery_id)
+    order = delivery.order
+    event = order.event
+    customer = order.customer
+
+    delivery.delete()
+    order.update_delivery_status()
+
+    return redirect("order_fulfilment", event_id=event.pk, customer_id=customer.pk)
+
+
 @login_required
 def delivery_create(
     request: HttpRequest, event_id: str, customer_id: str
@@ -1262,7 +1280,7 @@ def event_planning_notes(request: HttpRequest, event_id: str) -> HttpResponse:
     if request.method == "POST":
         event.planning_notes = request.POST.get("planning_notes", "")
         event.save(update_fields=["planning_notes", "modified"])
-        return redirect("event_planning_notes", event_id=event.pk)
+        return redirect("photographer_dashboard")
 
     return render(
         request,
@@ -1412,6 +1430,180 @@ def upload_to_google_drive(
         messages.success(
             request,
             f"Uploaded to Google Drive. Link: {drive_url}",
+        )
+    except Exception as exc:
+        messages.error(request, f"Google Drive upload failed: {exc}")
+    finally:
+        import os
+
+        os.unlink(tmp_path)
+
+    return redirect("order_fulfilment", event_id=event.pk, customer_id=customer.pk)
+
+
+@login_required
+def select_files_for_drive(
+    request: HttpRequest, event_id: str, customer_id: str
+) -> HttpResponse:
+    """File browser for selecting files to upload to Google Drive."""
+    if not _is_photographer(request.user):
+        return redirect("home")
+
+    from jasonstudio.accounts.models import Customer as CustomerModel
+
+    event = get_object_or_404(Event, pk=event_id)
+    customer = get_object_or_404(CustomerModel, pk=customer_id)
+    order = get_object_or_404(Order, event=event, customer=customer)
+
+    media_root = Path(settings.MEDIA_ROOT)
+    event_folder = media_root / "photos" / str(event.pk)
+    # Default to the event folder, allow navigation via ?path=
+    browse_path_str = request.GET.get("path", "")
+    if browse_path_str:
+        browse_path = Path(browse_path_str).resolve()
+    else:
+        browse_path = event_folder.resolve()
+
+    # Ensure the path exists and is a directory
+    if not browse_path.exists() or not browse_path.is_dir():
+        browse_path = event_folder.resolve()
+
+    # Build directory listing
+    folders: list[dict[str, str]] = []
+    files: list[dict[str, object]] = []
+
+    # Parent folder navigation
+    parent_path = browse_path.parent
+    has_parent = browse_path != browse_path.parent
+
+    image_extensions = {
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".tif",
+        ".tiff",
+        ".raw",
+        ".cr2",
+        ".nef",
+        ".arw",
+        ".dng",
+        ".psd",
+        ".zip",
+    }
+
+    try:
+        for entry in sorted(
+            browse_path.iterdir(), key=lambda e: (not e.is_dir(), e.name)
+        ):
+            if entry.name.startswith("."):
+                continue
+            if entry.is_dir():
+                folders.append({"name": entry.name, "path": str(entry)})
+            elif entry.is_file():
+                suffix = entry.suffix.lower()
+                if suffix in image_extensions:
+                    size_mb = entry.stat().st_size / (1024 * 1024)
+                    files.append(
+                        {
+                            "name": entry.name,
+                            "path": str(entry),
+                            "size": f"{size_mb:.1f} MB",
+                        }
+                    )
+    except PermissionError:
+        from django.contrib import messages
+
+        messages.error(request, f"Permission denied: {browse_path}")
+
+    return render(
+        request,
+        "gallery/select_files_for_drive.html",
+        {
+            "event": event,
+            "customer": customer,
+            "order": order,
+            "browse_path": str(browse_path),
+            "browse_path_display": browse_path.name or str(browse_path),
+            "parent_path": str(parent_path) if has_parent else "",
+            "event_folder": str(event_folder),
+            "folders": folders,
+            "files": files,
+        },
+    )
+
+
+@require_POST
+@login_required
+def upload_selected_to_google_drive(
+    request: HttpRequest, event_id: str, customer_id: str
+) -> HttpResponse:
+    """Upload photographer-selected files to Google Drive."""
+    import tempfile
+    import zipfile
+
+    from django.contrib import messages
+
+    if not _is_photographer(request.user):
+        return redirect("home")
+
+    from jasonstudio.accounts.models import Customer as CustomerModel
+
+    from .google_drive import is_drive_configured, upload_to_drive
+
+    event = get_object_or_404(Event, pk=event_id)
+    customer = get_object_or_404(CustomerModel, pk=customer_id)
+    order = get_object_or_404(Order, event=event, customer=customer)
+
+    if not is_drive_configured():
+        messages.error(
+            request,
+            "Google Drive is not configured. "
+            "Set GOOGLE_DRIVE_CREDENTIALS_FILE and GOOGLE_DRIVE_FOLDER_ID.",
+        )
+        return redirect("order_fulfilment", event_id=event.pk, customer_id=customer.pk)
+
+    selected_files = request.POST.getlist("selected_files")
+    if not selected_files:
+        messages.warning(request, "No files selected.")
+        return redirect("order_fulfilment", event_id=event.pk, customer_id=customer.pk)
+
+    # Validate all paths are real files
+    valid_paths: list[Path] = []
+    for fp in selected_files:
+        p = Path(fp).resolve()
+        if p.is_file():
+            valid_paths.append(p)
+
+    if not valid_paths:
+        messages.warning(request, "No valid files found.")
+        return redirect("order_fulfilment", event_id=event.pk, customer_id=customer.pk)
+
+    zip_filename = f"{event.name}_{customer}_selected.zip"
+
+    with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
+        tmp_path = tmp.name
+        with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zf:
+            for p in valid_paths:
+                zf.write(p, p.name)
+
+    try:
+        drive_url = upload_to_drive(tmp_path, zip_filename)
+        delivery = Delivery.objects.create(
+            order=order,
+            method=Delivery.Method.GOOGLE_DRIVE,
+            url=drive_url,
+            notes=f"Uploaded {len(valid_paths)} selected file(s)",
+        )
+        DeliveryItem.objects.create(
+            delivery=delivery,
+            sort_order=0,
+            description=f"Selected files ({len(valid_paths)})",
+            qty=len(valid_paths),
+        )
+        order.update_delivery_status()
+        messages.success(
+            request,
+            f"Uploaded {len(valid_paths)} file(s) to Google Drive. Link: {drive_url}",
         )
     except Exception as exc:
         messages.error(request, f"Google Drive upload failed: {exc}")

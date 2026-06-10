@@ -56,6 +56,11 @@ urlpatterns = [
         name="delivery_detail",
     ),
     path(
+        "delivery/<str:delivery_id>/delete/",
+        views.delivery_delete,
+        name="delivery_delete",
+    ),
+    path(
         "event/<str:event_id>/notes/",
         views.event_planning_notes,
         name="event_planning_notes",
@@ -74,6 +79,16 @@ urlpatterns = [
         "event/<str:event_id>/orders/<str:customer_id>/upload-to-drive/",
         views.upload_to_google_drive,
         name="upload_to_google_drive",
+    ),
+    path(
+        "event/<str:event_id>/orders/<str:customer_id>/select-files-for-drive/",
+        views.select_files_for_drive,
+        name="select_files_for_drive",
+    ),
+    path(
+        "event/<str:event_id>/orders/<str:customer_id>/upload-selected-to-drive/",
+        views.upload_selected_to_google_drive,
+        name="upload_selected_to_google_drive",
     ),
     path(
         "event/<str:event_id>/regenerate-thumbnails/",

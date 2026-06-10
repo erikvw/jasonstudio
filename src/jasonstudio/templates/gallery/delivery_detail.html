@@ -81,6 +81,14 @@
     </div>
 </form>
 
+<form method="post" action="{% url 'delivery_delete' delivery.pk %}" class="mt-4 text-end"
+      onsubmit="return confirm('Delete delivery {{ delivery.delivery_number }}? This cannot be undone.');">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-outline-danger">
+        <i class="fa-solid fa-trash"></i> Delete Delivery
+    </button>
+</form>
+
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const tbody = document.querySelector('#items-table tbody');
