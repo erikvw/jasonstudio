@@ -778,6 +778,37 @@ def customer_order_detail(
     )
 
 
+def _scaffold_delivery_items(
+    delivery: Delivery,
+    digital_count: int,
+    print_count: int,
+) -> None:
+    """Create default line items on a delivery from order selection counts."""
+    items: list[DeliveryItem] = []
+    idx = 0
+    if digital_count:
+        items.append(
+            DeliveryItem(
+                delivery=delivery,
+                sort_order=idx,
+                description=f"Digital images ({digital_count})",
+                qty=digital_count,
+            )
+        )
+        idx += 1
+    if print_count:
+        items.append(
+            DeliveryItem(
+                delivery=delivery,
+                sort_order=idx,
+                description=f"Print & Digital images ({print_count})",
+                qty=print_count,
+            )
+        )
+    if items:
+        DeliveryItem.objects.bulk_create(items)
+
+
 def _build_mailto_url(
     *,
     email: str,
@@ -833,25 +864,12 @@ def order_fulfilment(
     customer = get_object_or_404(Customer, pk=customer_id)
     order = get_object_or_404(Order, event=event, customer=customer)
 
-    all_selections = list(
-        Selection.objects.filter(customer=customer, photo__event=event)
-        .exclude(choice="reject")
-        .select_related("photo")
-        .order_by("choice", "photo__sort_order")
-    )
-
-    print_selections = [s for s in all_selections if s.choice == "both"]
-    print_photos = [s.photo for s in print_selections]
-
-    # Delivery coverage stats
-    total_items = len(all_selections)
-    delivered_ids = set(
-        DeliveryItem.objects.filter(selection__in=all_selections).values_list(
-            "selection_id", flat=True
-        )
-    )
-    delivered_count = len(delivered_ids)
-    undelivered_selections = [s for s in all_selections if s.pk not in delivered_ids]
+    selections = Selection.objects.filter(
+        customer=customer, photo__event=event
+    ).exclude(choice="reject")
+    print_photos = [
+        s.photo for s in selections.filter(choice="both").select_related("photo")
+    ]
 
     download_tokens = DownloadToken.objects.filter(
         order=order, customer=customer
@@ -866,7 +884,7 @@ def order_fulfilment(
     drive_configured = is_drive_configured()
 
     # Delivery history for this order
-    deliveries = order.deliveries.prefetch_related("items__selection__photo").all()
+    deliveries = order.deliveries.prefetch_related("items").all()
 
     # mailto with token-based download link
     mailto_url = ""
@@ -905,9 +923,6 @@ def order_fulfilment(
             "order": order,
             "photographer": photographer,
             "print_photos": print_photos,
-            "total_items": total_items,
-            "delivered_count": delivered_count,
-            "undelivered_selections": undelivered_selections,
             "download_tokens": download_tokens,
             "deliveries": deliveries,
             "latest_drive_delivery": latest_drive_delivery,
@@ -916,6 +931,203 @@ def order_fulfilment(
             "drive_configured": drive_configured,
         },
     )
+
+
+@login_required
+def delivery_detail(request: HttpRequest, delivery_id: str) -> HttpResponse:
+    """View or edit a delivery note."""
+    if not _is_photographer(request.user):
+        return redirect("home")
+
+    delivery = get_object_or_404(
+        Delivery.objects.prefetch_related("items"),
+        pk=delivery_id,
+    )
+    order = delivery.order
+    event = order.event
+    customer = order.customer
+
+    if request.method == "POST":
+        delivery.notes = request.POST.get("notes", "").strip()
+        url = request.POST.get("url", "").strip()
+        delivery.url = url
+        delivery.save(update_fields=["notes", "url", "date_modified"])
+
+        # Replace line items from form
+        delivery.items.all().delete()
+        idx = 0
+        while True:
+            desc = request.POST.get(f"item_{idx}_description", "").strip()
+            if not desc and idx > 0:
+                break
+            if desc:
+                qty = int(request.POST.get(f"item_{idx}_qty", "1") or "1")
+                DeliveryItem.objects.create(
+                    delivery=delivery,
+                    sort_order=idx,
+                    description=desc,
+                    qty=max(qty, 1),
+                )
+            idx += 1
+            if idx > 50:
+                break
+
+        return redirect(
+            "order_fulfilment",
+            event_id=event.pk,
+            customer_id=customer.pk,
+        )
+
+    return render(
+        request,
+        "gallery/delivery_detail.html",
+        {
+            "delivery": delivery,
+            "items": delivery.items.all(),
+            "order": order,
+            "event": event,
+            "customer": customer,
+        },
+    )
+
+
+@login_required
+def delivery_create(
+    request: HttpRequest, event_id: str, customer_id: str
+) -> HttpResponse:
+    """Photographer creates a new manual delivery note."""
+    if not _is_photographer(request.user):
+        return redirect("home")
+
+    from jasonstudio.accounts.models import Customer as CustomerModel
+
+    event = get_object_or_404(Event, pk=event_id)
+    customer = get_object_or_404(CustomerModel, pk=customer_id)
+    order = get_object_or_404(Order, event=event, customer=customer)
+
+    if request.method == "POST":
+        method = request.POST.get("method", Delivery.Method.MANUAL)
+        if method not in {c.value for c in Delivery.Method}:
+            method = Delivery.Method.MANUAL
+        notes = request.POST.get("notes", "").strip()
+        url = request.POST.get("url", "").strip()
+
+        delivery = Delivery.objects.create(
+            order=order,
+            method=method,
+            url=url,
+            notes=notes,
+        )
+
+        # Save line items from form
+        idx = 0
+        while True:
+            desc = request.POST.get(f"item_{idx}_description", "").strip()
+            if not desc and idx > 0:
+                break
+            if desc:
+                qty = int(request.POST.get(f"item_{idx}_qty", "1") or "1")
+                DeliveryItem.objects.create(
+                    delivery=delivery,
+                    sort_order=idx,
+                    description=desc,
+                    qty=max(qty, 1),
+                )
+            idx += 1
+            if idx > 50:
+                break
+
+        order.update_delivery_status()
+        return redirect(
+            "order_fulfilment",
+            event_id=event.pk,
+            customer_id=customer.pk,
+        )
+
+    # Scaffold default items from order selections
+    selections = Selection.objects.filter(
+        customer=customer, photo__event=event
+    ).exclude(choice="reject")
+    digital_count = selections.filter(choice__in=["digital", "both"]).count()
+    print_count = selections.filter(choice="both").count()
+
+    scaffold_items = []
+    idx = 0
+    if digital_count:
+        scaffold_items.append(
+            {
+                "sort_order": idx,
+                "description": f"Digital images ({digital_count})",
+                "qty": digital_count,
+            }
+        )
+        idx += 1
+    if print_count:
+        scaffold_items.append(
+            {
+                "sort_order": idx,
+                "description": f"Print & Digital images ({print_count})",
+                "qty": print_count,
+            }
+        )
+
+    return render(
+        request,
+        "gallery/delivery_form.html",
+        {
+            "event": event,
+            "customer": customer,
+            "order": order,
+            "scaffold_items": scaffold_items,
+            "delivery_methods": Delivery.Method.choices,
+        },
+    )
+
+
+@login_required
+@require_POST
+def mark_order_delivered(
+    request: HttpRequest, event_id: str, customer_id: str
+) -> HttpResponse:
+    """Photographer marks order as fully delivered."""
+    if not _is_photographer(request.user):
+        return redirect("home")
+
+    from jasonstudio.accounts.models import Customer as CustomerModel
+
+    event = get_object_or_404(Event, pk=event_id)
+    customer = get_object_or_404(CustomerModel, pk=customer_id)
+    order = get_object_or_404(Order, event=event, customer=customer)
+
+    order.status = Order.Status.DELIVERED
+    order.save(update_fields=["status", "date_modified"])
+
+    return redirect("order_fulfilment", event_id=event.pk, customer_id=customer.pk)
+
+
+@login_required
+@require_POST
+def reopen_order_delivery(
+    request: HttpRequest, event_id: str, customer_id: str
+) -> HttpResponse:
+    """Photographer reopens a delivered order (undo mark as delivered)."""
+    if not _is_photographer(request.user):
+        return redirect("home")
+
+    from jasonstudio.accounts.models import Customer as CustomerModel
+
+    event = get_object_or_404(Event, pk=event_id)
+    customer = get_object_or_404(CustomerModel, pk=customer_id)
+    order = get_object_or_404(Order, event=event, customer=customer)
+
+    # Recalculate based on actual deliveries
+    if order.deliveries.exists():
+        order.status = Order.Status.PARTIALLY_DELIVERED
+    else:
+        order.status = Order.Status.IN_PROGRESS
+    order.save(update_fields=["status", "date_modified"])
+
+    return redirect("order_fulfilment", event_id=event.pk, customer_id=customer.pk)
 
 
 @login_required
@@ -1162,14 +1374,16 @@ def upload_to_google_drive(
         )
 
     # Build the zip of all digital delivery photos
-    digital_selections = list(
+    selections = list(
         Selection.objects.filter(customer=customer, photo__event=event)
         .exclude(choice="reject")
         .select_related("photo")
     )
-    photos = [s.photo for s in digital_selections if s.choice in ("digital", "both")]
+    digital_photos = [s.photo for s in selections if s.choice in ("digital", "both")]
+    digital_count = len(digital_photos)
+    print_count = sum(1 for s in selections if s.choice == "both")
 
-    if not photos:
+    if not digital_photos:
         messages.warning(request, "No photos to upload.")
         return redirect("order_fulfilment", event_id=event.pk, customer_id=customer.pk)
 
@@ -1178,7 +1392,7 @@ def upload_to_google_drive(
     with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
         tmp_path = tmp.name
         with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zf:
-            for photo in photos:
+            for photo in digital_photos:
                 if photo.original:
                     zf.write(
                         photo.original.path,
@@ -1193,14 +1407,7 @@ def upload_to_google_drive(
             url=drive_url,
             notes=f"Uploaded {zip_filename}",
         )
-        # Create DeliveryItems for all digital selections included in this zip
-        DeliveryItem.objects.bulk_create(
-            [
-                DeliveryItem(delivery=delivery, selection=sel)
-                for sel in digital_selections
-                if sel.choice in ("digital", "both")
-            ]
-        )
+        _scaffold_delivery_items(delivery, digital_count, print_count)
         order.update_delivery_status()
         messages.success(
             request,
@@ -1851,25 +2058,20 @@ def send_download_email(
     token.sent_at = timezone.now()
     token.save(update_fields=["sent_at"])
 
-    # Create a Delivery + DeliveryItems for all digital selections
-    digital_selections = list(
-        Selection.objects.filter(customer=customer, photo__event=event)
-        .exclude(choice="reject")
-        .filter(choice__in=["digital", "both"])
-    )
-    if digital_selections:
+    # Create a Delivery with scaffolded items
+    selections = Selection.objects.filter(
+        customer=customer, photo__event=event
+    ).exclude(choice="reject")
+    digital_count = selections.filter(choice__in=["digital", "both"]).count()
+    print_count = selections.filter(choice="both").count()
+    if digital_count:
         delivery = Delivery.objects.create(
             order=order,
             method=Delivery.Method.EMAIL,
             url=download_url,
             notes=f"Email sent to {email}",
         )
-        DeliveryItem.objects.bulk_create(
-            [
-                DeliveryItem(delivery=delivery, selection=sel)
-                for sel in digital_selections
-            ]
-        )
+        _scaffold_delivery_items(delivery, digital_count, print_count)
         order.update_delivery_status()
 
     messages.success(request, f"Download link sent to {email}.")

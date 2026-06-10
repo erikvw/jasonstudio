@@ -42,35 +42,45 @@
         <div class="d-flex flex-wrap gap-2 align-items-center">
             {% if order.status == "delivered" %}
             <span class="badge bg-dark fs-6">Delivered</span>
-            <span class="text-muted">{{ delivered_count }} of {{ total_items }} item{{ total_items|pluralize }} delivered</span>
+            <form method="post" action="{% url 'reopen_order_delivery' event.pk customer.pk %}" class="ms-auto">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-outline-secondary">Reopen</button>
+            </form>
             {% elif order.status == "partially_delivered" %}
             <span class="badge bg-info fs-6">Partially Delivered</span>
-            <span class="text-muted">{{ delivered_count }} of {{ total_items }} item{{ total_items|pluralize }} delivered</span>
+            <span class="text-muted">{{ deliveries.count }} deliver{{ deliveries.count|pluralize:"y,ies" }} recorded</span>
+            <form method="post" action="{% url 'mark_order_delivered' event.pk customer.pk %}" class="ms-auto">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-success">
+                    <i class="fa-solid fa-check"></i> Mark Fully Delivered
+                </button>
+            </form>
             {% else %}
             <span class="badge bg-warning text-dark fs-6">In Progress</span>
-            <span class="text-muted">{{ total_items }} item{{ total_items|pluralize }} awaiting delivery</span>
+            <span class="text-muted">No deliveries recorded yet</span>
+            {% if deliveries.count == 0 %}
+            <form method="post" action="{% url 'mark_order_delivered' event.pk customer.pk %}" class="ms-auto">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-outline-success">
+                    <i class="fa-solid fa-check"></i> Mark Fully Delivered
+                </button>
+            </form>
+            {% endif %}
             {% endif %}
         </div>
-        {% if undelivered_selections %}
-        <div class="mt-2">
-            <small class="text-muted">Outstanding items:</small>
-            <ul class="list-unstyled mb-0 mt-1 ms-2">
-                {% for sel in undelivered_selections %}
-                <li class="small">
-                    <i class="fa-solid fa-circle-xmark text-muted"></i>
-                    {{ sel.photo.filename|default:sel.photo }}
-                    <span class="badge bg-light text-dark">{{ sel.get_choice_display }}</span>
-                </li>
-                {% endfor %}
-            </ul>
-        </div>
-        {% endif %}
     </div>
 </div>
 
 <!-- Customer Delivery -->
 <div class="card mb-4">
-    <div class="card-header"><strong><i class="fa-solid fa-paper-plane"></i> Customer Delivery</strong></div>
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <strong><i class="fa-solid fa-paper-plane"></i> Customer Delivery</strong>
+        {% if order.is_paid %}
+        <a href="{% url 'delivery_create' event.pk customer.pk %}" class="btn btn-sm btn-outline-primary">
+            <i class="fa-solid fa-plus"></i> New Delivery
+        </a>
+        {% endif %}
+    </div>
     <div class="card-body">
         {% if order.is_paid %}
 
@@ -197,17 +207,25 @@
             <tbody>
                 {% for d in deliveries %}
                 <tr>
-                    <td>{{ d.delivery_number }}</td>
+                    <td>
+                        <a href="{% url 'delivery_detail' d.pk %}">{{ d.delivery_number }}</a>
+                    </td>
                     <td>{{ d.get_method_display }}</td>
-                    <td>{{ d.items.count }} item{{ d.items.count|pluralize }}</td>
+                    <td>
+                        {% for item in d.items.all %}
+                        <span class="small">{{ item.description }}{% if not forloop.last %},{% endif %}</span>
+                        {% empty %}
+                        <span class="text-muted">—</span>
+                        {% endfor %}
+                    </td>
                     <td>
                         {% if d.url %}
-                        <a href="{{ d.url }}" target="_blank" rel="noopener" class="text-break small">{{ d.url|truncatechars:50 }}</a>
+                        <a href="{{ d.url }}" target="_blank" rel="noopener" class="text-break small">{{ d.url|truncatechars:40 }}</a>
                         {% else %}
                         <span class="text-muted">—</span>
                         {% endif %}
                     </td>
-                    <td class="text-nowrap">{{ d.date_created|date:"N j, Y g:i A" }}</td>
+                    <td class="text-nowrap">{{ d.date_created|date:"N j, Y" }}</td>
                 </tr>
                 {% endfor %}
             </tbody>

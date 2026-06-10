@@ -158,8 +158,8 @@ class PaymentAdmin(admin.ModelAdmin):
 
 class DeliveryItemInline(admin.TabularInline):
     model = DeliveryItem
-    extra = 0
-    raw_id_fields = ["selection"]
+    extra = 1
+    fields = ["sort_order", "description", "qty"]
 
 
 @admin.register(Delivery)

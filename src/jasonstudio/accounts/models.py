@@ -356,27 +356,21 @@ class Order(AuditFieldsMixin):
         super().save(*args, **kwargs)
 
     def update_delivery_status(self) -> None:
-        """Recalculate order status based on delivery coverage of selections."""
-        from jasonstudio.gallery.models import Selection
+        """Recalculate order status based on deliveries.
 
-        total_selections = Selection.objects.filter(
-            customer=self.customer, photo__event=self.event
-        ).exclude(choice="reject")
-
-        total_count = total_selections.count()
-        if total_count == 0:
-            new_status = self.Status.IN_PROGRESS
-        else:
-            delivered_count = (
-                total_selections.filter(delivery_items__isnull=False).distinct().count()
-            )
-            if delivered_count == 0:
-                new_status = self.Status.IN_PROGRESS
-            elif delivered_count >= total_count:
-                new_status = self.Status.DELIVERED
-            else:
-                new_status = self.Status.PARTIALLY_DELIVERED
-
+        No deliveries → In Progress.
+        Has deliveries but not marked complete → Partially Delivered.
+        Photographer marks complete → Delivered (set directly, not here).
+        """
+        has_deliveries = self.deliveries.exists()
+        if self.status == self.Status.DELIVERED:
+            # Don't downgrade if photographer explicitly marked as delivered
+            return
+        new_status = (
+            self.Status.PARTIALLY_DELIVERED
+            if has_deliveries
+            else self.Status.IN_PROGRESS
+        )
         if self.status != new_status:
             self.status = new_status
             self.save(update_fields=["status", "date_modified"])
@@ -669,28 +663,25 @@ class Delivery(AuditFieldsMixin):
 
 
 class DeliveryItem(models.Model):
-    """Links a Delivery to a specific Selection (order line item).
+    """Free-form line item on a delivery note.
 
-    A Selection may appear in multiple DeliveryItems (re-sends are allowed).
-    For status purposes, a selection is "delivered" if it has at least one
-    DeliveryItem.
+    Scaffolded from the order's selections but editable by the
+    photographer (descriptions, quantities, splits).
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     delivery = models.ForeignKey(
         Delivery, on_delete=models.CASCADE, related_name="items"
     )
-    selection = models.ForeignKey(
-        "gallery.Selection",
-        on_delete=models.CASCADE,
-        related_name="delivery_items",
-    )
+    sort_order = models.PositiveIntegerField(default=0)
+    description = models.CharField(max_length=300)
+    qty = models.PositiveIntegerField(default=1)
 
     class Meta:
-        ordering = ["delivery"]
+        ordering = ["sort_order"]
 
     def __str__(self) -> str:
-        return f"{self.delivery.delivery_number} → {self.selection}"
+        return f"{self.delivery.delivery_number} — {self.description}"
 
 
 # ---------------------------------------------------------------------------

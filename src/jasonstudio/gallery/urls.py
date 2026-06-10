@@ -36,6 +36,26 @@ urlpatterns = [
         name="order_fulfilment",
     ),
     path(
+        "event/<str:event_id>/orders/<str:customer_id>/fulfilment/new-delivery/",
+        views.delivery_create,
+        name="delivery_create",
+    ),
+    path(
+        "event/<str:event_id>/orders/<str:customer_id>/fulfilment/mark-delivered/",
+        views.mark_order_delivered,
+        name="mark_order_delivered",
+    ),
+    path(
+        "event/<str:event_id>/orders/<str:customer_id>/fulfilment/reopen-delivery/",
+        views.reopen_order_delivery,
+        name="reopen_order_delivery",
+    ),
+    path(
+        "delivery/<str:delivery_id>/",
+        views.delivery_detail,
+        name="delivery_detail",
+    ),
+    path(
         "event/<str:event_id>/notes/",
         views.event_planning_notes,
         name="event_planning_notes",
