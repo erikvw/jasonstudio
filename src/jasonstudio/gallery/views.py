@@ -13,6 +13,7 @@ from django.views.decorators.http import require_POST
 from PIL import Image, ImageOps
 
 from jasonstudio.accounts.models import (
+    Delivery,
     DownloadToken,
     Invoice,
     InvoiceLineItem,
@@ -852,6 +853,9 @@ def order_fulfilment(
 
     drive_configured = is_drive_configured()
 
+    # Delivery history for this order
+    deliveries = order.deliveries.all()
+
     # mailto with token-based download link
     mailto_url = ""
     if customer.user.email and download_tokens:
@@ -866,12 +870,15 @@ def order_fulfilment(
                 photographer=photographer,
             )
 
-    # mailto with Google Drive link
+    # mailto with Google Drive link (from latest drive delivery)
     drive_mailto_url = ""
-    if customer.user.email and order.drive_url:
+    latest_drive_delivery = deliveries.filter(
+        method=Delivery.Method.GOOGLE_DRIVE
+    ).first()
+    if customer.user.email and latest_drive_delivery and latest_drive_delivery.url:
         drive_mailto_url = _build_mailto_url(
             email=customer.user.email,
-            download_url=order.drive_url,
+            download_url=latest_drive_delivery.url,
             customer_name=customer_name,
             event_name=event.name,
             photographer=photographer,
@@ -887,10 +894,11 @@ def order_fulfilment(
             "photographer": photographer,
             "print_photos": print_photos,
             "download_tokens": download_tokens,
+            "deliveries": deliveries,
+            "latest_drive_delivery": latest_drive_delivery,
             "mailto_url": mailto_url,
             "drive_mailto_url": drive_mailto_url,
             "drive_configured": drive_configured,
-            "delivery_method": getattr(settings, "CUSTOMER_DELIVERY_METHOD", "drive"),
         },
     )
 
@@ -1189,8 +1197,12 @@ def upload_to_google_drive(
 
     try:
         drive_url = upload_to_drive(tmp_path, zip_filename)
-        order.drive_url = drive_url
-        order.save(update_fields=["drive_url", "date_modified"])
+        Delivery.objects.create(
+            order=order,
+            method=Delivery.Method.GOOGLE_DRIVE,
+            url=drive_url,
+            notes=f"Uploaded {zip_filename}",
+        )
         messages.success(
             request,
             f"Uploaded to Google Drive. Link: {drive_url}",
@@ -1202,7 +1214,7 @@ def upload_to_google_drive(
 
         os.unlink(tmp_path)
 
-    return redirect("customer_order_detail", event_id=event.pk, customer_id=customer.pk)
+    return redirect("order_fulfilment", event_id=event.pk, customer_id=customer.pk)
 
 
 @login_required

@@ -316,12 +316,6 @@ class Order(AuditFieldsMixin):
     )
     download_count = models.PositiveIntegerField(default=0)
     notes = models.TextField(blank=True, default="")
-    drive_url = models.URLField(
-        max_length=500,
-        blank=True,
-        default="",
-        help_text="Google Drive download link for customer delivery.",
-    )
 
     history = HistoricalRecords()
 
@@ -580,6 +574,69 @@ class Payment(AuditFieldsMixin):
         if self.invoice_id and self.invoice.status != Invoice.Status.PAID:
             self.invoice.status = Invoice.Status.PAID
             self.invoice.save(update_fields=["status", "date_modified"])
+
+
+# ---------------------------------------------------------------------------
+# Delivery
+# ---------------------------------------------------------------------------
+
+
+class Delivery(AuditFieldsMixin):
+    """Tracks how and when customer photos were delivered."""
+
+    class Method(models.TextChoices):
+        GOOGLE_DRIVE = "google_drive", "Google Drive"
+        EMAIL = "email", "Email Link"
+        MANUAL = "manual", "Manual"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    delivery_number = models.CharField(
+        max_length=20,
+        unique=True,
+        blank=True,
+        help_text="Auto-generated delivery number.",
+    )
+    order = models.ForeignKey(
+        Order, on_delete=models.CASCADE, related_name="deliveries"
+    )
+    method = models.CharField(
+        max_length=20,
+        choices=Method.choices,
+    )
+    url = models.URLField(
+        max_length=500,
+        blank=True,
+        default="",
+        help_text="Download link (Google Drive URL, token link, etc.).",
+    )
+    notes = models.TextField(blank=True, default="")
+
+    history = HistoricalRecords()
+
+    class Meta:
+        ordering = ["-date_created"]
+        verbose_name_plural = "deliveries"
+
+    def __str__(self) -> str:
+        return (
+            f"{self.delivery_number} — {self.get_method_display()} — {self.order.ref}"
+        )
+
+    def save(self, *args, **kwargs) -> None:
+        if not self.delivery_number:
+            last = (
+                Delivery.objects.exclude(delivery_number="")
+                .order_by("-date_created")
+                .first()
+            )
+            next_num = 1
+            if last and last.delivery_number:
+                try:
+                    next_num = int(last.delivery_number.replace("DEL-", "")) + 1
+                except ValueError:
+                    next_num = Delivery.objects.count() + 1
+            self.delivery_number = f"DEL-{next_num:05d}"
+        super().save(*args, **kwargs)
 
 
 # ---------------------------------------------------------------------------
