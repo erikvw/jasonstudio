@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+{% block title %}Fulfilment — {{ order.ref }} — Jason Studio{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-end mb-3 flex-wrap gap-2">
+    <a href="{% url 'event_orders' event.pk %}" class="btn btn-outline-secondary btn-sm">Back to Quotes &amp; Orders</a>
+</div>
+
+<h4 class="mb-1">Fulfilment</h4>
+<p class="text-muted mb-4">
+    {{ customer.user.get_full_name|default:customer.user.username }}
+    — {{ event.name }}
+    — Order {{ order.ref }}
+</p>
+
+<!-- Payment -->
+<div class="card mb-4">
+    <div class="card-header"><strong><i class="fa-solid fa-credit-card"></i> Payment</strong></div>
+    <div class="card-body">
+        {% if order.is_paid %}
+        <div class="d-flex flex-wrap gap-2 align-items-center">
+            <span class="badge bg-success fs-6">Paid</span>
+            {% if order.paid_at %}
+            <span class="text-muted">on {{ order.paid_at|date:"N j, Y" }}</span>
+            {% endif %}
+            <a href="{% url 'payment_receipt' event.pk customer.pk %}"
+               class="btn btn-sm btn-outline-success ms-auto"><i class="fa-solid fa-receipt"></i> View Receipt</a>
+        </div>
+        {% else %}
+        <div class="d-flex flex-wrap gap-2 align-items-center">
+            <span class="badge bg-warning text-dark fs-6">Unpaid</span>
+            <a href="{% url 'record_payment' event.pk customer.pk %}"
+               class="btn btn-sm btn-success ms-auto"><i class="fa-solid fa-credit-card"></i> Record Payment</a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Fulfilment Status -->
+<div class="card mb-4">
+    <div class="card-header"><strong><i class="fa-solid fa-truck"></i> Fulfilment Status</strong></div>
+    <div class="card-body">
+        <form method="post" action="{% url 'update_order_fulfilment' event.pk customer.pk %}" class="d-flex gap-2 align-items-center flex-wrap">
+            {% csrf_token %}
+            <select name="status" class="form-select form-select-sm" style="width:auto;">
+                <option value="in_progress" {% if order.status == "in_progress" %}selected{% endif %}>In Progress</option>
+                <option value="delivered" {% if order.status == "delivered" %}selected{% endif %}>Delivered</option>
+            </select>
+            <button type="submit" class="btn btn-sm btn-primary">Update</button>
+            {% if order.status == 'delivered' %}
+            <span class="badge bg-dark ms-2">Delivered</span>
+            {% endif %}
+        </form>
+    </div>
+</div>
+
+<!-- Customer Delivery -->
+<div class="card mb-4">
+    <div class="card-header"><strong><i class="fa-solid fa-paper-plane"></i> Customer Delivery</strong></div>
+    <div class="card-body">
+        {% if order.is_paid %}
+        {% if print_photos %}
+        <div class="d-flex flex-wrap gap-2 mb-3">
+            <a href="{% url 'download_zip' event.pk customer.pk 'print' %}"
+               class="btn btn-outline-success btn-sm">
+                <i class="fa-solid fa-download"></i> Print Originals ({{ print_photos|length }})
+            </a>
+        </div>
+        {% endif %}
+
+        {% if delivery_method == "drive" %}
+        <!-- Google Drive delivery -->
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div>
+                <strong>Upload for customer</strong>
+                <br><small class="text-muted">Upload the customer's digital delivery zip to Google Drive</small>
+            </div>
+            <div class="d-flex gap-2 flex-wrap">
+                {% if drive_configured %}
+                <form method="post" action="{% url 'upload_to_google_drive' event.pk customer.pk %}">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-outline-success btn-sm">
+                        <i class="fa-brands fa-google-drive"></i> Upload to Google Drive
+                    </button>
+                </form>
+                {% else %}
+                <span data-bs-toggle="tooltip" data-bs-placement="top" title="Google Drive is not configured. See docs/google_drive_setup.md">
+                    <button type="button" class="btn btn-outline-success btn-sm" disabled>
+                        <i class="fa-brands fa-google-drive"></i> Upload to Google Drive
+                    </button>
+                </span>
+                {% endif %}
+            </div>
+        </div>
+        {% if order.drive_url %}
+        <hr>
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div>
+                <strong>Google Drive link</strong>
+                <br><small class="text-muted text-break">{{ order.drive_url }}</small>
+            </div>
+            <div class="d-flex gap-2 flex-wrap">
+                {% if drive_mailto_url %}
+                <a href="{{ drive_mailto_url }}" class="btn btn-outline-secondary btn-sm"
+                   {% if not customer.user.email %}style="pointer-events:none;opacity:0.5;"{% endif %}>
+                    <i class="fa-solid fa-up-right-from-square"></i> Email to Customer
+                </a>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% elif delivery_method == "email" %}
+        <!-- Token-based email delivery -->
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div>
+                <strong>Email download link to customer</strong>
+                <br><small class="text-muted">
+                    {% if customer.user.email %}
+                    Sends to {{ customer.user.email }}
+                    {% else %}
+                    <span class="text-danger">No email address on file</span>
+                    {% endif %}
+                </small>
+            </div>
+            <div class="d-flex gap-2 flex-wrap">
+                <form method="post" action="{% url 'send_download_email' event.pk customer.pk %}">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-outline-primary btn-sm"
+                            {% if not customer.user.email %}disabled{% endif %}>
+                        <i class="fa-solid fa-envelope"></i> Send Email with Download Link
+                    </button>
+                </form>
+                {% if mailto_url %}
+                <a href="{{ mailto_url }}" class="btn btn-outline-secondary btn-sm">
+                    <i class="fa-solid fa-up-right-from-square"></i> Open in Email App
+                </a>
+                {% endif %}
+            </div>
+        </div>
+        {% if download_tokens %}
+        <hr>
+        <div>
+            <small class="text-muted">Previously sent:</small>
+            <ul class="list-unstyled mb-0 mt-1">
+                {% for dt in download_tokens %}
+                {% if dt.sent_at %}
+                <li class="small">
+                    <i class="fa-solid fa-envelope"></i>
+                    {{ dt.sent_at|date:"N j, Y g:i A" }}
+                    — downloads: {{ dt.download_count }}
+                    {% if dt.is_expired %}<span class="badge bg-secondary">Expired</span>{% endif %}
+                </li>
+                {% endif %}
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+        {% endif %}
+
+        {% else %}
+        <p class="text-muted mb-0">
+            <i class="fa-solid fa-lock"></i> Customer delivery available after payment is confirmed.
+        </p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Photographer Downloads -->
+<div class="card mb-4">
+    <div class="card-header"><strong><i class="fa-solid fa-camera"></i> Photographer Downloads</strong></div>
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div>
+                <strong>All event photos</strong>
+                <br><small class="text-muted">Zip of all {{ event.photo_count }} original photo{{ event.photo_count|pluralize }} from this event (not customer-specific)</small>
+            </div>
+            <a href="{% url 'download_event_photos' event.pk %}" class="btn btn-outline-dark btn-sm">
+                <i class="fa-solid fa-download"></i> Download All ({{ event.photo_count }})
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Share Link -->
+{% if order.share_link %}
+<div class="card mb-4">
+    <div class="card-header"><strong>Share Link</strong></div>
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div>
+                <span class="font-monospace fs-5">{{ order.share_link.code }}</span>
+                {% if order.share_link.is_active %}
+                <span class="badge bg-success ms-2">Active</span>
+                {% else %}
+                <span class="badge bg-secondary ms-2">Deactivated</span>
+                {% endif %}
+                <span class="text-muted ms-3">Downloads: {{ order.share_link.download_count }}</span>
+            </div>
+            {% if order.share_link.is_active %}
+            <form method="post" action="{% url 'deactivate_share_link' event.pk %}">
+                {% csrf_token %}
+                <input type="hidden" name="customer_id" value="{{ customer.pk }}">
+                <button type="submit" class="btn btn-sm btn-outline-danger">Deactivate</button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}

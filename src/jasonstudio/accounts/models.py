@@ -103,6 +103,30 @@ class PhotographerProfile(AuditFieldsMixin):
         default="",
         help_text="Default terms/notes shown at the bottom of invoices.",
     )
+    email_subject_template = models.CharField(
+        max_length=200,
+        blank=True,
+        default='Your photos from "{event_name}" are ready',
+        help_text=(
+            "Subject line for download emails. "
+            "Placeholders: {customer_name}, {event_name}, {photographer_name}"
+        ),
+    )
+    email_body_template = models.TextField(
+        blank=True,
+        default=(
+            "Hi {customer_name},\n\n"
+            'Your photos from "{event_name}" are ready for download.\n\n'
+            "Click the link below to download your photos:\n\n"
+            "{download_url}\n\n"
+            "Thank you for choosing {photographer_name}."
+        ),
+        help_text=(
+            "Body for download emails. "
+            "Placeholders: {customer_name}, {event_name}, "
+            "{photographer_name}, {download_url}"
+        ),
+    )
 
     def __str__(self) -> str:
         return self.business_name or str(self.user)
@@ -292,6 +316,12 @@ class Order(AuditFieldsMixin):
     )
     download_count = models.PositiveIntegerField(default=0)
     notes = models.TextField(blank=True, default="")
+    drive_url = models.URLField(
+        max_length=500,
+        blank=True,
+        default="",
+        help_text="Google Drive download link for customer delivery.",
+    )
 
     history = HistoricalRecords()
 

@@ -108,7 +108,7 @@ class OrderAdmin(admin.ModelAdmin):
     ]
     list_filter = ["status", "event"]
     search_fields = ["ref", "customer__user__username", "event__name"]
-    readonly_fields = ["ref", "download_count"]
+    readonly_fields = ["ref", "download_count", "drive_url"]
 
 
 class InvoiceLineItemInline(admin.TabularInline):
