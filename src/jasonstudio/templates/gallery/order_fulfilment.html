@@ -58,6 +58,7 @@
     <div class="card-header"><strong><i class="fa-solid fa-paper-plane"></i> Customer Delivery</strong></div>
     <div class="card-body">
         {% if order.is_paid %}
+
         {% if print_photos %}
         <div class="d-flex flex-wrap gap-2 mb-3">
             <a href="{% url 'download_zip' event.pk customer.pk 'print' %}"
@@ -67,11 +68,10 @@
         </div>
         {% endif %}
 
-        {% if delivery_method == "drive" %}
         <!-- Google Drive delivery -->
-        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
             <div>
-                <strong>Upload for customer</strong>
+                <strong>Google Drive</strong>
                 <br><small class="text-muted">Upload the customer's digital delivery zip to Google Drive</small>
             </div>
             <div class="d-flex gap-2 flex-wrap">
@@ -91,12 +91,12 @@
                 {% endif %}
             </div>
         </div>
-        {% if order.drive_url %}
-        <hr>
-        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+
+        {% if latest_drive_delivery %}
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
             <div>
                 <strong>Google Drive link</strong>
-                <br><small class="text-muted text-break">{{ order.drive_url }}</small>
+                <br><small class="text-muted text-break">{{ latest_drive_delivery.url }}</small>
             </div>
             <div class="d-flex gap-2 flex-wrap">
                 {% if drive_mailto_url %}
@@ -109,11 +109,12 @@
         </div>
         {% endif %}
 
-        {% elif delivery_method == "email" %}
-        <!-- Token-based email delivery -->
+        <hr>
+
+        <!-- Email token delivery -->
         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
             <div>
-                <strong>Email download link to customer</strong>
+                <strong>Email download link</strong>
                 <br><small class="text-muted">
                     {% if customer.user.email %}
                     Sends to {{ customer.user.email }}
@@ -138,8 +139,7 @@
             </div>
         </div>
         {% if download_tokens %}
-        <hr>
-        <div>
+        <div class="mt-2">
             <small class="text-muted">Previously sent:</small>
             <ul class="list-unstyled mb-0 mt-1">
                 {% for dt in download_tokens %}
@@ -155,7 +155,6 @@
             </ul>
         </div>
         {% endif %}
-        {% endif %}
 
         {% else %}
         <p class="text-muted mb-0">
@@ -164,6 +163,41 @@
         {% endif %}
     </div>
 </div>
+
+<!-- Delivery History -->
+{% if deliveries %}
+<div class="card mb-4">
+    <div class="card-header"><strong><i class="fa-solid fa-clock-rotate-left"></i> Delivery History</strong></div>
+    <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+            <thead>
+                <tr>
+                    <th>Delivery #</th>
+                    <th>Method</th>
+                    <th>URL</th>
+                    <th>Date</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for d in deliveries %}
+                <tr>
+                    <td>{{ d.delivery_number }}</td>
+                    <td>{{ d.get_method_display }}</td>
+                    <td>
+                        {% if d.url %}
+                        <a href="{{ d.url }}" target="_blank" rel="noopener" class="text-break small">{{ d.url|truncatechars:60 }}</a>
+                        {% else %}
+                        <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-nowrap">{{ d.date_created|date:"N j, Y g:i A" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
 
 <!-- Photographer Downloads -->
 <div class="card mb-4">

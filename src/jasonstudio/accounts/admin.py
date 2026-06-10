@@ -4,6 +4,7 @@ from django.contrib.auth.models import User
 
 from .models import (
     Customer,
+    Delivery,
     Invoice,
     InvoiceLineItem,
     Order,
@@ -108,7 +109,7 @@ class OrderAdmin(admin.ModelAdmin):
     ]
     list_filter = ["status", "event"]
     search_fields = ["ref", "customer__user__username", "event__name"]
-    readonly_fields = ["ref", "download_count", "drive_url"]
+    readonly_fields = ["ref", "download_count"]
 
 
 class InvoiceLineItemInline(admin.TabularInline):
@@ -152,3 +153,11 @@ class PaymentAdmin(admin.ModelAdmin):
     list_filter = ["method"]
     search_fields = ["receipt_number", "invoice__invoice_number"]
     readonly_fields = ["receipt_number"]
+
+
+@admin.register(Delivery)
+class DeliveryAdmin(admin.ModelAdmin):
+    list_display = ["delivery_number", "order", "method", "date_created"]
+    list_filter = ["method"]
+    search_fields = ["delivery_number", "order__ref"]
+    readonly_fields = ["delivery_number"]

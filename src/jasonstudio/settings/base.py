@@ -81,11 +81,6 @@ LOGIN_URL = "/accounts/login/"
 WATERMARK_TEXT = "PROOF"
 WATERMARK_OPACITY = 75
 
-# Customer delivery method: "drive" (Google Drive link) or "email" (token-based link)
-# "drive" shows Upload to Drive + mailto with Drive link.
-# "email" shows the server-hosted token-based download email flow.
-CUSTOMER_DELIVERY_METHOD = env("CUSTOMER_DELIVERY_METHOD", default="drive")
-
 # Google Drive integration (for sharing download zips with customers)
 # See docs/google_drive_setup.md for setup instructions.
 # OAuth2 (personal Gmail) — set CLIENT_SECRETS_FILE
