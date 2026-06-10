@@ -36,11 +36,6 @@ urlpatterns = [
         name="order_fulfilment",
     ),
     path(
-        "event/<str:event_id>/orders/<str:customer_id>/fulfilment/update/",
-        views.update_order_fulfilment,
-        name="update_order_fulfilment",
-    ),
-    path(
         "event/<str:event_id>/notes/",
         views.event_planning_notes,
         name="event_planning_notes",

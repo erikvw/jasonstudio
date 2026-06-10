@@ -14,6 +14,7 @@ from PIL import Image, ImageOps
 
 from jasonstudio.accounts.models import (
     Delivery,
+    DeliveryItem,
     DownloadToken,
     Invoice,
     InvoiceLineItem,
@@ -832,14 +833,25 @@ def order_fulfilment(
     customer = get_object_or_404(Customer, pk=customer_id)
     order = get_object_or_404(Order, event=event, customer=customer)
 
-    selections = (
+    all_selections = list(
         Selection.objects.filter(customer=customer, photo__event=event)
+        .exclude(choice="reject")
         .select_related("photo")
         .order_by("choice", "photo__sort_order")
     )
 
-    print_selections = [s for s in selections if s.choice == "both"]
+    print_selections = [s for s in all_selections if s.choice == "both"]
     print_photos = [s.photo for s in print_selections]
+
+    # Delivery coverage stats
+    total_items = len(all_selections)
+    delivered_ids = set(
+        DeliveryItem.objects.filter(selection__in=all_selections).values_list(
+            "selection_id", flat=True
+        )
+    )
+    delivered_count = len(delivered_ids)
+    undelivered_selections = [s for s in all_selections if s.pk not in delivered_ids]
 
     download_tokens = DownloadToken.objects.filter(
         order=order, customer=customer
@@ -854,7 +866,7 @@ def order_fulfilment(
     drive_configured = is_drive_configured()
 
     # Delivery history for this order
-    deliveries = order.deliveries.all()
+    deliveries = order.deliveries.prefetch_related("items__selection__photo").all()
 
     # mailto with token-based download link
     mailto_url = ""
@@ -893,6 +905,9 @@ def order_fulfilment(
             "order": order,
             "photographer": photographer,
             "print_photos": print_photos,
+            "total_items": total_items,
+            "delivered_count": delivered_count,
+            "undelivered_selections": undelivered_selections,
             "download_tokens": download_tokens,
             "deliveries": deliveries,
             "latest_drive_delivery": latest_drive_delivery,
@@ -1025,29 +1040,6 @@ def payment_receipt(
 
 
 @login_required
-@require_POST
-def update_order_fulfilment(
-    request: HttpRequest, event_id: str, customer_id: str
-) -> HttpResponse:
-    """Photographer updates order fulfilment status (in_progress / delivered)."""
-    if not _is_photographer(request.user):
-        return redirect("home")
-
-    from jasonstudio.accounts.models import Customer as CustomerModel
-
-    event = get_object_or_404(Event, pk=event_id)
-    customer = get_object_or_404(CustomerModel, pk=customer_id)
-    order = get_object_or_404(Order, event=event, customer=customer)
-
-    new_status = request.POST.get("status", "")
-    if new_status in {c.value for c in Order.Status}:
-        order.status = new_status
-        order.save(update_fields=["status", "date_modified"])
-
-    return redirect("customer_order_detail", event_id=event.pk, customer_id=customer.pk)
-
-
-@login_required
 def event_planning_notes(request: HttpRequest, event_id: str) -> HttpResponse:
     """Photographer views/edits internal planning notes for an event."""
     if not _is_photographer(request.user):
@@ -1170,18 +1162,16 @@ def upload_to_google_drive(
         )
 
     # Build the zip of all digital delivery photos
-    selections = (
+    digital_selections = list(
         Selection.objects.filter(customer=customer, photo__event=event)
         .exclude(choice="reject")
         .select_related("photo")
     )
-    photos = [s.photo for s in selections if s.choice in ("digital", "both")]
+    photos = [s.photo for s in digital_selections if s.choice in ("digital", "both")]
 
     if not photos:
         messages.warning(request, "No photos to upload.")
-        return redirect(
-            "customer_order_detail", event_id=event.pk, customer_id=customer.pk
-        )
+        return redirect("order_fulfilment", event_id=event.pk, customer_id=customer.pk)
 
     zip_filename = f"{event.name}_{customer}_digital.zip"
 
@@ -1197,12 +1187,21 @@ def upload_to_google_drive(
 
     try:
         drive_url = upload_to_drive(tmp_path, zip_filename)
-        Delivery.objects.create(
+        delivery = Delivery.objects.create(
             order=order,
             method=Delivery.Method.GOOGLE_DRIVE,
             url=drive_url,
             notes=f"Uploaded {zip_filename}",
         )
+        # Create DeliveryItems for all digital selections included in this zip
+        DeliveryItem.objects.bulk_create(
+            [
+                DeliveryItem(delivery=delivery, selection=sel)
+                for sel in digital_selections
+                if sel.choice in ("digital", "both")
+            ]
+        )
+        order.update_delivery_status()
         messages.success(
             request,
             f"Uploaded to Google Drive. Link: {drive_url}",
@@ -1852,8 +1851,29 @@ def send_download_email(
     token.sent_at = timezone.now()
     token.save(update_fields=["sent_at"])
 
+    # Create a Delivery + DeliveryItems for all digital selections
+    digital_selections = list(
+        Selection.objects.filter(customer=customer, photo__event=event)
+        .exclude(choice="reject")
+        .filter(choice__in=["digital", "both"])
+    )
+    if digital_selections:
+        delivery = Delivery.objects.create(
+            order=order,
+            method=Delivery.Method.EMAIL,
+            url=download_url,
+            notes=f"Email sent to {email}",
+        )
+        DeliveryItem.objects.bulk_create(
+            [
+                DeliveryItem(delivery=delivery, selection=sel)
+                for sel in digital_selections
+            ]
+        )
+        order.update_delivery_status()
+
     messages.success(request, f"Download link sent to {email}.")
-    return redirect("customer_order_detail", event_id=event.pk, customer_id=customer.pk)
+    return redirect("order_fulfilment", event_id=event.pk, customer_id=customer.pk)
 
 
 def token_download_page(request: HttpRequest, token: str) -> HttpResponse:

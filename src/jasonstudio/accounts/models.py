@@ -282,6 +282,7 @@ class QuotationLineItem(models.Model):
 class Order(AuditFieldsMixin):
     class Status(models.TextChoices):
         IN_PROGRESS = "in_progress", "In Progress"
+        PARTIALLY_DELIVERED = "partially_delivered", "Partially Delivered"
         DELIVERED = "delivered", "Delivered"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -353,6 +354,32 @@ class Order(AuditFieldsMixin):
                     next_num = Order.objects.count() + 1
             self.ref = f"ORD-{next_num:05d}"
         super().save(*args, **kwargs)
+
+    def update_delivery_status(self) -> None:
+        """Recalculate order status based on delivery coverage of selections."""
+        from jasonstudio.gallery.models import Selection
+
+        total_selections = Selection.objects.filter(
+            customer=self.customer, photo__event=self.event
+        ).exclude(choice="reject")
+
+        total_count = total_selections.count()
+        if total_count == 0:
+            new_status = self.Status.IN_PROGRESS
+        else:
+            delivered_count = (
+                total_selections.filter(delivery_items__isnull=False).distinct().count()
+            )
+            if delivered_count == 0:
+                new_status = self.Status.IN_PROGRESS
+            elif delivered_count >= total_count:
+                new_status = self.Status.DELIVERED
+            else:
+                new_status = self.Status.PARTIALLY_DELIVERED
+
+        if self.status != new_status:
+            self.status = new_status
+            self.save(update_fields=["status", "date_modified"])
 
     @property
     def is_paid(self) -> bool:
@@ -637,6 +664,33 @@ class Delivery(AuditFieldsMixin):
                     next_num = Delivery.objects.count() + 1
             self.delivery_number = f"DEL-{next_num:05d}"
         super().save(*args, **kwargs)
+        # Auto-update order delivery status after items are added
+        # (called explicitly after bulk_create of DeliveryItems in views)
+
+
+class DeliveryItem(models.Model):
+    """Links a Delivery to a specific Selection (order line item).
+
+    A Selection may appear in multiple DeliveryItems (re-sends are allowed).
+    For status purposes, a selection is "delivered" if it has at least one
+    DeliveryItem.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    delivery = models.ForeignKey(
+        Delivery, on_delete=models.CASCADE, related_name="items"
+    )
+    selection = models.ForeignKey(
+        "gallery.Selection",
+        on_delete=models.CASCADE,
+        related_name="delivery_items",
+    )
+
+    class Meta:
+        ordering = ["delivery"]
+
+    def __str__(self) -> str:
+        return f"{self.delivery.delivery_number} → {self.selection}"
 
 
 # ---------------------------------------------------------------------------

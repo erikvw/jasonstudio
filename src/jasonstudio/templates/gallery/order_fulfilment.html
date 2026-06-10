@@ -35,21 +35,36 @@
     </div>
 </div>
 
-<!-- Fulfilment Status -->
+<!-- Delivery Status -->
 <div class="card mb-4">
-    <div class="card-header"><strong><i class="fa-solid fa-truck"></i> Fulfilment Status</strong></div>
+    <div class="card-header"><strong><i class="fa-solid fa-truck"></i> Delivery Status</strong></div>
     <div class="card-body">
-        <form method="post" action="{% url 'update_order_fulfilment' event.pk customer.pk %}" class="d-flex gap-2 align-items-center flex-wrap">
-            {% csrf_token %}
-            <select name="status" class="form-select form-select-sm" style="width:auto;">
-                <option value="in_progress" {% if order.status == "in_progress" %}selected{% endif %}>In Progress</option>
-                <option value="delivered" {% if order.status == "delivered" %}selected{% endif %}>Delivered</option>
-            </select>
-            <button type="submit" class="btn btn-sm btn-primary">Update</button>
-            {% if order.status == 'delivered' %}
-            <span class="badge bg-dark ms-2">Delivered</span>
+        <div class="d-flex flex-wrap gap-2 align-items-center">
+            {% if order.status == "delivered" %}
+            <span class="badge bg-dark fs-6">Delivered</span>
+            <span class="text-muted">{{ delivered_count }} of {{ total_items }} item{{ total_items|pluralize }} delivered</span>
+            {% elif order.status == "partially_delivered" %}
+            <span class="badge bg-info fs-6">Partially Delivered</span>
+            <span class="text-muted">{{ delivered_count }} of {{ total_items }} item{{ total_items|pluralize }} delivered</span>
+            {% else %}
+            <span class="badge bg-warning text-dark fs-6">In Progress</span>
+            <span class="text-muted">{{ total_items }} item{{ total_items|pluralize }} awaiting delivery</span>
             {% endif %}
-        </form>
+        </div>
+        {% if undelivered_selections %}
+        <div class="mt-2">
+            <small class="text-muted">Outstanding items:</small>
+            <ul class="list-unstyled mb-0 mt-1 ms-2">
+                {% for sel in undelivered_selections %}
+                <li class="small">
+                    <i class="fa-solid fa-circle-xmark text-muted"></i>
+                    {{ sel.photo.filename|default:sel.photo }}
+                    <span class="badge bg-light text-dark">{{ sel.get_choice_display }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
     </div>
 </div>
 
@@ -174,6 +189,7 @@
                 <tr>
                     <th>Delivery #</th>
                     <th>Method</th>
+                    <th>Items</th>
                     <th>URL</th>
                     <th>Date</th>
                 </tr>
@@ -183,9 +199,10 @@
                 <tr>
                     <td>{{ d.delivery_number }}</td>
                     <td>{{ d.get_method_display }}</td>
+                    <td>{{ d.items.count }} item{{ d.items.count|pluralize }}</td>
                     <td>
                         {% if d.url %}
-                        <a href="{{ d.url }}" target="_blank" rel="noopener" class="text-break small">{{ d.url|truncatechars:60 }}</a>
+                        <a href="{{ d.url }}" target="_blank" rel="noopener" class="text-break small">{{ d.url|truncatechars:50 }}</a>
                         {% else %}
                         <span class="text-muted">—</span>
                         {% endif %}
