@@ -10,14 +10,22 @@ def remove_drive_url_columns(apps, schema_editor):
     directly via SQL because Django's migration state doesn't know they exist.
     """
     connection = schema_editor.connection
-    vendor = connection.vendor  # "sqlite" or "mysql"
+    vendor = connection.vendor
 
     for table in ("accounts_order", "accounts_historicalorder"):
-        # Check if column exists
+        # Check if column exists — vendor-specific introspection
         if vendor == "sqlite":
             with connection.cursor() as cursor:
                 cursor.execute(f"PRAGMA table_info({table})")
                 columns = {row[1] for row in cursor.fetchall()}
+        elif vendor == "postgresql":
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT column_name FROM information_schema.columns "
+                    "WHERE table_schema = 'public' AND table_name = %s",
+                    [table],
+                )
+                columns = {row[0] for row in cursor.fetchall()}
         else:
             # MySQL / MariaDB
             with connection.cursor() as cursor:
