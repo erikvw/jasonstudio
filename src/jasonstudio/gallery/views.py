@@ -900,19 +900,18 @@ def order_fulfilment(
                 photographer=photographer,
             )
 
-    # mailto with Google Drive link (from latest drive delivery)
-    drive_mailto_url = ""
-    latest_drive_delivery = deliveries.filter(
-        method=Delivery.Method.GOOGLE_DRIVE
-    ).first()
-    if customer.user.email and latest_drive_delivery and latest_drive_delivery.url:
-        drive_mailto_url = _build_mailto_url(
-            email=customer.user.email,
-            download_url=latest_drive_delivery.url,
-            customer_name=customer_name,
-            event_name=event.name,
-            photographer=photographer,
-        )
+    # Attach a mailto URL to each delivery that has a URL
+    for d in deliveries:
+        if d.url and customer.user.email:
+            d.mailto_url = _build_mailto_url(
+                email=customer.user.email,
+                download_url=d.url,
+                customer_name=customer_name,
+                event_name=event.name,
+                photographer=photographer,
+            )
+        else:
+            d.mailto_url = ""
 
     return render(
         request,
@@ -925,9 +924,7 @@ def order_fulfilment(
             "print_photos": print_photos,
             "download_tokens": download_tokens,
             "deliveries": deliveries,
-            "latest_drive_delivery": latest_drive_delivery,
             "mailto_url": mailto_url,
-            "drive_mailto_url": drive_mailto_url,
             "drive_configured": drive_configured,
         },
     )

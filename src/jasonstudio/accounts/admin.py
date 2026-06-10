@@ -67,6 +67,15 @@ class PhotographerProfileAdmin(admin.ModelAdmin):
                 ]
             },
         ),
+        (
+            "Email Template",
+            {
+                "fields": [
+                    "email_subject_template",
+                    "email_body_template",
+                ]
+            },
+        ),
     ]
 
 
