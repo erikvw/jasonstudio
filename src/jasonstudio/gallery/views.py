@@ -1,4 +1,5 @@
 from io import BytesIO
+from pathlib import Path
 
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
@@ -747,6 +748,80 @@ def event_orders(request: HttpRequest, event_id: str) -> HttpResponse:
 def customer_order_detail(
     request: HttpRequest, event_id: str, customer_id: str
 ) -> HttpResponse:
+    """Printable order document."""
+    if not _is_photographer(request.user):
+        return redirect("home")
+
+    event = get_object_or_404(Event, pk=event_id)
+    from jasonstudio.accounts.models import Customer
+
+    customer = get_object_or_404(Customer, pk=customer_id)
+    order = get_object_or_404(Order, event=event, customer=customer)
+
+    quotation = order.quotation
+    quotation_line_items = quotation.line_items.all() if quotation else []
+    photographer = PhotographerProfile.objects.first()
+
+    return render(
+        request,
+        "gallery/customer_order_detail.html",
+        {
+            "event": event,
+            "customer": customer,
+            "order": order,
+            "quotation": quotation,
+            "quotation_line_items": quotation_line_items,
+            "photographer": photographer,
+        },
+    )
+
+
+def _build_mailto_url(
+    *,
+    email: str,
+    download_url: str,
+    customer_name: str,
+    event_name: str,
+    photographer: PhotographerProfile | None,
+) -> str:
+    """Render the photographer's email template into a mailto: URL."""
+    from urllib.parse import quote as urlquote
+
+    photographer_name = photographer.business_name if photographer else "Jason Studio"
+    subject_template = (
+        photographer.email_subject_template
+        if photographer
+        else 'Your photos from "{event_name}" are ready'
+    )
+    body_template = (
+        photographer.email_body_template
+        if photographer
+        else (
+            "Hi {customer_name},\n\n"
+            'Your photos from "{event_name}" are ready for download.\n\n'
+            "{download_url}\n\n"
+            "Thank you for choosing {photographer_name}."
+        )
+    )
+    replacements = {
+        "customer_name": customer_name,
+        "event_name": event_name,
+        "photographer_name": photographer_name,
+        "download_url": download_url,
+    }
+    subject = subject_template
+    body = body_template
+    for key, val in replacements.items():
+        subject = subject.replace(f"{{{key}}}", val)
+        body = body.replace(f"{{{key}}}", val)
+    return f"mailto:{email}?subject={urlquote(subject)}&body={urlquote(body)}"
+
+
+@login_required
+def order_fulfilment(
+    request: HttpRequest, event_id: str, customer_id: str
+) -> HttpResponse:
+    """Fulfilment page: payment, delivery, and downloads."""
     if not _is_photographer(request.user):
         return redirect("home")
 
@@ -762,77 +837,60 @@ def customer_order_detail(
         .order_by("choice", "photo__sort_order")
     )
 
-    digital_photos = [s.photo for s in selections if s.choice == "digital"]
     print_selections = [s for s in selections if s.choice == "both"]
     print_photos = [s.photo for s in print_selections]
-    print_sizes_by_photo = {
-        str(s.photo_id): s.get_print_size_display() for s in print_selections
-    }
-    rejected = Selection.objects.filter(
-        customer=customer, photo__event=event, choice="reject"
-    ).count()
 
     download_tokens = DownloadToken.objects.filter(
         order=order, customer=customer
     ).order_by("-date_created")
 
-    quotation = order.quotation
-    quotation_line_items = quotation.line_items.all() if quotation else []
     photographer = PhotographerProfile.objects.first()
+    customer_name = customer.user.get_full_name() or customer.user.username
 
     # Check if Google Drive is configured
     from .google_drive import is_drive_configured
 
     drive_configured = is_drive_configured()
 
-    # Build a mailto: URL using the latest valid download token
+    # mailto with token-based download link
     mailto_url = ""
     if customer.user.email and download_tokens:
-        from urllib.parse import quote as urlquote
-
         latest_token = download_tokens.first()
         if latest_token and latest_token.is_valid:
-            download_url = request.build_absolute_uri(
-                f"/download/{latest_token.token}/"
+            token_url = request.build_absolute_uri(f"/download/{latest_token.token}/")
+            mailto_url = _build_mailto_url(
+                email=customer.user.email,
+                download_url=token_url,
+                customer_name=customer_name,
+                event_name=event.name,
+                photographer=photographer,
             )
-            photographer_name = (
-                photographer.business_name if photographer else "Jason Studio"
-            )
-            customer_name = customer.user.get_full_name() or customer.user.username
-            subject = f'Your photos from "{event.name}" are ready'
-            body = (
-                f"Hi {customer_name},\n\n"
-                f'Your photos from "{event.name}" are ready for download.\n\n'
-                f"Click the link below to download your photos:\n\n"
-                f"{download_url}\n\n"
-                f"This link will expire on "
-                f"{latest_token.expires_at.strftime('%b %d, %Y')}.\n\n"
-                f"Thank you for choosing {photographer_name}."
-            )
-            mailto_url = (
-                f"mailto:{customer.user.email}"
-                f"?subject={urlquote(subject)}"
-                f"&body={urlquote(body)}"
-            )
+
+    # mailto with Google Drive link
+    drive_mailto_url = ""
+    if customer.user.email and order.drive_url:
+        drive_mailto_url = _build_mailto_url(
+            email=customer.user.email,
+            download_url=order.drive_url,
+            customer_name=customer_name,
+            event_name=event.name,
+            photographer=photographer,
+        )
 
     return render(
         request,
-        "gallery/customer_order_detail.html",
+        "gallery/order_fulfilment.html",
         {
             "event": event,
             "customer": customer,
             "order": order,
-            "quotation": quotation,
-            "quotation_line_items": quotation_line_items,
             "photographer": photographer,
-            "digital_photos": digital_photos,
             "print_photos": print_photos,
-            "print_sizes_by_photo": print_sizes_by_photo,
-            "digital_delivery_count": len(digital_photos) + len(print_photos),
-            "rejected_count": rejected,
             "download_tokens": download_tokens,
             "mailto_url": mailto_url,
+            "drive_mailto_url": drive_mailto_url,
             "drive_configured": drive_configured,
+            "delivery_method": getattr(settings, "CUSTOMER_DELIVERY_METHOD", "drive"),
         },
     )
 
@@ -1131,11 +1189,8 @@ def upload_to_google_drive(
 
     try:
         drive_url = upload_to_drive(tmp_path, zip_filename)
-        # Store the Drive link on the order
-        order.notes = (
-            order.notes.rstrip() + f"\n\nGoogle Drive download: {drive_url}"
-        ).strip()
-        order.save(update_fields=["notes", "date_modified"])
+        order.drive_url = drive_url
+        order.save(update_fields=["drive_url", "date_modified"])
         messages.success(
             request,
             f"Uploaded to Google Drive. Link: {drive_url}",
@@ -1854,3 +1909,124 @@ def token_download_file(request: HttpRequest, token: str) -> HttpResponse:
     response = HttpResponse(buffer.read(), content_type="application/zip")
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
     return response
+
+
+# ── Utilities ──────────────────────────────────────────────────────────
+
+
+@login_required
+def utilities(request: HttpRequest) -> HttpResponse:
+    """Photographer utilities page."""
+    if not _is_photographer(request.user):
+        return redirect("home")
+
+    from .google_drive import is_drive_configured
+
+    photographer = request.user.photographer_profile
+
+    return render(
+        request,
+        "gallery/utilities.html",
+        {
+            "drive_configured": is_drive_configured(),
+            "photographer": photographer,
+        },
+    )
+
+
+@login_required
+def email_template_edit(request: HttpRequest) -> HttpResponse:
+    """Edit the default email template for customer download emails."""
+    from django.contrib import messages
+
+    if not _is_photographer(request.user):
+        return redirect("home")
+
+    photographer = request.user.photographer_profile
+
+    if request.method == "POST":
+        photographer.email_subject_template = request.POST.get(
+            "email_subject_template", ""
+        ).strip()
+        photographer.email_body_template = request.POST.get(
+            "email_body_template", ""
+        ).strip()
+        photographer.save(
+            update_fields=[
+                "email_subject_template",
+                "email_body_template",
+                "date_modified",
+            ]
+        )
+        messages.success(request, "Email template updated.")
+        return redirect("utilities")
+
+    return redirect("utilities")
+
+
+@login_required
+@require_POST
+def backup_database(request: HttpRequest) -> HttpResponse:
+    """Back up the SQLite database.
+
+    If Google Drive is configured, uploads the backup there.
+    Otherwise, serves it as a local file download.
+    """
+    import shutil
+    import tempfile
+
+    from django.contrib import messages
+
+    if not _is_photographer(request.user):
+        return redirect("home")
+
+    db_path = settings.DATABASES["default"]["NAME"]
+    if not db_path or not Path(db_path).exists():
+        messages.error(request, "Database file not found.")
+        return redirect("utilities")
+
+    timestamp = timezone.now().strftime("%Y%m%d_%H%M%S")
+    backup_filename = f"jasonstudio_backup_{timestamp}.sqlite3"
+
+    # Copy the database safely (SQLite supports this while the DB is open)
+    tmp_dir = tempfile.mkdtemp()
+    backup_path = Path(tmp_dir) / backup_filename
+    shutil.copy2(str(db_path), str(backup_path))
+
+    destination = request.POST.get("destination", "drive")
+
+    if destination == "drive":
+        from .google_drive import is_drive_configured, upload_to_drive
+
+        if not is_drive_configured():
+            messages.error(request, "Google Drive is not configured.")
+            return redirect("utilities")
+
+        try:
+            drive_url = upload_to_drive(
+                str(backup_path),
+                backup_filename,
+                mime_type="application/x-sqlite3",
+            )
+            messages.success(
+                request,
+                f"Database backed up to Google Drive: {drive_url}",
+            )
+        except Exception as e:
+            messages.error(request, f"Google Drive upload failed: {e}")
+        finally:
+            backup_path.unlink(missing_ok=True)
+            Path(tmp_dir).rmdir()
+
+        return redirect("utilities")
+
+    else:
+        # Local download
+        response = HttpResponse(
+            backup_path.read_bytes(),
+            content_type="application/x-sqlite3",
+        )
+        response["Content-Disposition"] = f'attachment; filename="{backup_filename}"'
+        backup_path.unlink(missing_ok=True)
+        Path(tmp_dir).rmdir()
+        return response

@@ -71,13 +71,14 @@
                    class="btn btn-sm btn-outline-primary">Order</a>
                 <a href="{% url 'photographer_invoice' event.pk row.customer.pk %}"
                    class="btn btn-sm btn-outline-dark">Invoice</a>
-                {% if row.order.is_paid %}
-                <a href="{% url 'payment_receipt' event.pk row.customer.pk %}"
-                   class="btn btn-sm btn-outline-success">Receipt</a>
-                {% else %}
-                <a href="{% url 'record_payment' event.pk row.customer.pk %}"
-                   class="btn btn-sm btn-success">Payment</a>
-                {% endif %}
+                <a href="{% url 'order_fulfilment' event.pk row.customer.pk %}"
+                   class="btn btn-sm {% if row.order.status == 'delivered' %}btn-outline-dark{% elif row.order.is_paid %}btn-outline-success{% else %}btn-outline-warning{% endif %}">
+                    Fulfilment
+                    {% if row.order.status == 'delivered' %}<span class="badge bg-dark ms-1">Delivered</span>
+                    {% elif row.order.is_paid %}<span class="badge bg-success ms-1">Paid</span>
+                    {% else %}<span class="badge bg-warning text-dark ms-1">Unpaid</span>
+                    {% endif %}
+                </a>
             {% endif %}
         </div>
     </div>
@@ -163,13 +164,14 @@
                                class="btn btn-sm btn-outline-primary">Order</a>
                             <a href="{% url 'photographer_invoice' event.pk row.customer.pk %}"
                                class="btn btn-sm btn-outline-dark">Invoice</a>
-                            {% if row.order.is_paid %}
-                            <a href="{% url 'payment_receipt' event.pk row.customer.pk %}"
-                               class="btn btn-sm btn-outline-success">Receipt</a>
-                            {% else %}
-                            <a href="{% url 'record_payment' event.pk row.customer.pk %}"
-                               class="btn btn-sm btn-success">Payment</a>
-                            {% endif %}
+                            <a href="{% url 'order_fulfilment' event.pk row.customer.pk %}"
+                               class="btn btn-sm {% if row.order.status == 'delivered' %}btn-outline-dark{% elif row.order.is_paid %}btn-outline-success{% else %}btn-outline-warning{% endif %}">
+                                Fulfilment
+                                {% if row.order.status == 'delivered' %}<span class="badge bg-dark ms-1">Delivered</span>
+                                {% elif row.order.is_paid %}<span class="badge bg-success ms-1">Paid</span>
+                                {% else %}<span class="badge bg-warning text-dark ms-1">Unpaid</span>
+                                {% endif %}
+                            </a>
                         {% endif %}
                     </div>
                 </td>

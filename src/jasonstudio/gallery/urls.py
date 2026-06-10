@@ -32,6 +32,11 @@ urlpatterns = [
     ),
     path(
         "event/<str:event_id>/orders/<str:customer_id>/fulfilment/",
+        views.order_fulfilment,
+        name="order_fulfilment",
+    ),
+    path(
+        "event/<str:event_id>/orders/<str:customer_id>/fulfilment/update/",
         views.update_order_fulfilment,
         name="update_order_fulfilment",
     ),
@@ -135,6 +140,16 @@ urlpatterns = [
         "my-quotes/<str:event_id>/decline/",
         views.customer_quotation_decline,
         name="customer_quotation_decline",
+    ),
+    # Utilities
+    path("photographer/utilities/", views.utilities, name="utilities"),
+    path(
+        "photographer/utilities/backup/", views.backup_database, name="backup_database"
+    ),
+    path(
+        "photographer/utilities/email-template/",
+        views.email_template_edit,
+        name="email_template_edit",
     ),
     # Download tokens (email-based)
     path(

@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Utilities — Jason Studio{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+    <h2 class="mb-0">Utilities</h2>
+    <a href="{% url 'photographer_dashboard' %}" class="btn btn-outline-secondary btn-sm">Back to Dashboard</a>
+</div>
+
+<!-- Database Backup -->
+<div class="card mb-4">
+    <div class="card-header"><strong><i class="fa-solid fa-database"></i> Database Backup</strong></div>
+    <div class="card-body">
+        <p class="text-muted mb-3">
+            Create a backup of the application database. Backups include all events,
+            customers, orders, invoices, payments, and photo metadata.
+        </p>
+        <div class="d-flex flex-wrap gap-2">
+            {% if drive_configured %}
+            <form method="post" action="{% url 'backup_database' %}">
+                {% csrf_token %}
+                <input type="hidden" name="destination" value="drive">
+                <button type="submit" class="btn btn-outline-success btn-sm">
+                    <i class="fa-brands fa-google-drive"></i> Backup to Google Drive
+                </button>
+            </form>
+            {% else %}
+            <span data-bs-toggle="tooltip" data-bs-placement="top" title="Google Drive is not configured. See docs/google_drive_setup.md">
+                <button type="button" class="btn btn-outline-success btn-sm" disabled>
+                    <i class="fa-brands fa-google-drive"></i> Backup to Google Drive
+                </button>
+            </span>
+            {% endif %}
+            <form method="post" action="{% url 'backup_database' %}">
+                {% csrf_token %}
+                <input type="hidden" name="destination" value="local">
+                <button type="submit" class="btn btn-outline-dark btn-sm">
+                    <i class="fa-solid fa-download"></i> Download Backup
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Email Template -->
+<div class="card mb-4">
+    <div class="card-header"><strong><i class="fa-solid fa-envelope"></i> Download Email Template</strong></div>
+    <div class="card-body">
+        <p class="text-muted mb-3">
+            Customize the default email sent to customers with their download link.
+            Use placeholders to insert dynamic values.
+        </p>
+        <div class="mb-3">
+            <span class="badge bg-secondary me-1">{customer_name}</span>
+            <span class="badge bg-secondary me-1">{event_name}</span>
+            <span class="badge bg-secondary me-1">{photographer_name}</span>
+            <span class="badge bg-secondary me-1">{download_url}</span>
+        </div>
+        <form method="post" action="{% url 'email_template_edit' %}">
+            {% csrf_token %}
+            <div class="mb-3">
+                <label for="email_subject_template" class="form-label fw-bold">Subject</label>
+                <input type="text" class="form-control" id="email_subject_template"
+                       name="email_subject_template"
+                       value="{{ photographer.email_subject_template }}">
+            </div>
+            <div class="mb-3">
+                <label for="email_body_template" class="form-label fw-bold">Body</label>
+                <textarea class="form-control" id="email_body_template"
+                          name="email_body_template" rows="10">{{ photographer.email_body_template }}</textarea>
+            </div>
+            <button type="submit" class="btn btn-primary btn-sm">
+                <i class="fa-solid fa-save"></i> Save Template
+            </button>
+        </form>
+    </div>
+</div>
+
+{% endblock %}
