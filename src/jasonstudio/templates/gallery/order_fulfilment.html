@@ -94,8 +94,8 @@
                     </td>
                     <td class="text-nowrap">{{ d.date_created|date:"N j, Y" }}</td>
                     <td>
-                        {% if d.url and customer.user.email %}
-                        <a href="mailto:{{ customer.user.email }}?subject={{ event.name|urlencode }}%20—%20Your%20photos&body=Hi%20{{ customer.user.first_name|urlencode }}%2C%0A%0AYour%20photos%20are%20ready%3A%0A{{ d.url|urlencode }}"
+                        {% if d.mailto_url %}
+                        <a href="{{ d.mailto_url }}"
                            class="btn btn-sm btn-outline-secondary" title="Email link to customer">
                             <i class="fa-solid fa-envelope"></i>
                         </a>
