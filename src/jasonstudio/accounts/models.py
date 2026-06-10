@@ -282,6 +282,7 @@ class QuotationLineItem(models.Model):
 class Order(AuditFieldsMixin):
     class Status(models.TextChoices):
         IN_PROGRESS = "in_progress", "In Progress"
+        PARTIALLY_DELIVERED = "partially_delivered", "Partially Delivered"
         DELIVERED = "delivered", "Delivered"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -353,6 +354,26 @@ class Order(AuditFieldsMixin):
                     next_num = Order.objects.count() + 1
             self.ref = f"ORD-{next_num:05d}"
         super().save(*args, **kwargs)
+
+    def update_delivery_status(self) -> None:
+        """Recalculate order status based on deliveries.
+
+        No deliveries → In Progress.
+        Has deliveries but not marked complete → Partially Delivered.
+        Photographer marks complete → Delivered (set directly, not here).
+        """
+        has_deliveries = self.deliveries.exists()
+        if self.status == self.Status.DELIVERED:
+            # Don't downgrade if photographer explicitly marked as delivered
+            return
+        new_status = (
+            self.Status.PARTIALLY_DELIVERED
+            if has_deliveries
+            else self.Status.IN_PROGRESS
+        )
+        if self.status != new_status:
+            self.status = new_status
+            self.save(update_fields=["status", "date_modified"])
 
     @property
     def is_paid(self) -> bool:
@@ -637,6 +658,30 @@ class Delivery(AuditFieldsMixin):
                     next_num = Delivery.objects.count() + 1
             self.delivery_number = f"DEL-{next_num:05d}"
         super().save(*args, **kwargs)
+        # Auto-update order delivery status after items are added
+        # (called explicitly after bulk_create of DeliveryItems in views)
+
+
+class DeliveryItem(models.Model):
+    """Free-form line item on a delivery note.
+
+    Scaffolded from the order's selections but editable by the
+    photographer (descriptions, quantities, splits).
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    delivery = models.ForeignKey(
+        Delivery, on_delete=models.CASCADE, related_name="items"
+    )
+    sort_order = models.PositiveIntegerField(default=0)
+    description = models.CharField(max_length=300)
+    qty = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        ordering = ["sort_order"]
+
+    def __str__(self) -> str:
+        return f"{self.delivery.delivery_number} — {self.description}"
 
 
 # ---------------------------------------------------------------------------

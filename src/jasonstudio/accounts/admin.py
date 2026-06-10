@@ -5,6 +5,7 @@ from django.contrib.auth.models import User
 from .models import (
     Customer,
     Delivery,
+    DeliveryItem,
     Invoice,
     InvoiceLineItem,
     Order,
@@ -155,9 +156,20 @@ class PaymentAdmin(admin.ModelAdmin):
     readonly_fields = ["receipt_number"]
 
 
+class DeliveryItemInline(admin.TabularInline):
+    model = DeliveryItem
+    extra = 1
+    fields = ["sort_order", "description", "qty"]
+
+
 @admin.register(Delivery)
 class DeliveryAdmin(admin.ModelAdmin):
-    list_display = ["delivery_number", "order", "method", "date_created"]
+    list_display = ["delivery_number", "order", "method", "item_count", "date_created"]
     list_filter = ["method"]
     search_fields = ["delivery_number", "order__ref"]
     readonly_fields = ["delivery_number"]
+    inlines = [DeliveryItemInline]
+
+    @admin.display(description="Items")
+    def item_count(self, obj: Delivery) -> int:
+        return obj.items.count()

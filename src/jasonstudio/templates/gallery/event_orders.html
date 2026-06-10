@@ -43,6 +43,8 @@
                 {% endif %}
                 {% if row.order.status == 'delivered' %}
                 <span class="badge bg-dark">Delivered</span>
+                {% elif row.order.status == 'partially_delivered' %}
+                <span class="badge bg-info">Partial</span>
                 {% endif %}
             {% endif %}
             <!-- Selections -->
@@ -72,9 +74,10 @@
                 <a href="{% url 'photographer_invoice' event.pk row.customer.pk %}"
                    class="btn btn-sm btn-outline-dark">Invoice</a>
                 <a href="{% url 'order_fulfilment' event.pk row.customer.pk %}"
-                   class="btn btn-sm {% if row.order.status == 'delivered' %}btn-outline-dark{% elif row.order.is_paid %}btn-outline-success{% else %}btn-outline-warning{% endif %}">
+                   class="btn btn-sm {% if row.order.status == 'delivered' %}btn-outline-dark{% elif row.order.status == 'partially_delivered' %}btn-outline-info{% elif row.order.is_paid %}btn-outline-success{% else %}btn-outline-warning{% endif %}">
                     Fulfilment
                     {% if row.order.status == 'delivered' %}<span class="badge bg-dark ms-1">Delivered</span>
+                    {% elif row.order.status == 'partially_delivered' %}<span class="badge bg-info ms-1">Partial</span>
                     {% elif row.order.is_paid %}<span class="badge bg-success ms-1">Paid</span>
                     {% else %}<span class="badge bg-warning text-dark ms-1">Unpaid</span>
                     {% endif %}

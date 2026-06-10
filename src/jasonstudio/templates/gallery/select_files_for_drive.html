@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}Select Files for Google Drive — {{ order.ref }} — Jason Studio{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-end mb-3 flex-wrap gap-2">
+    <a href="{% url 'order_fulfilment' event.pk customer.pk %}" class="btn btn-outline-secondary btn-sm">Back to Fulfilment</a>
+</div>
+
+<h4 class="mb-1">Upload Selected to Google Drive</h4>
+<p class="text-muted mb-4">
+    {{ customer.user.get_full_name|default:customer.user.username }}
+    — {{ event.name }}
+    — Order {{ order.ref }}
+</p>
+
+<form method="post" action="{% url 'upload_selected_to_google_drive' event.pk customer.pk %}" id="upload-form">
+    {% csrf_token %}
+
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <strong><i class="fa-solid fa-folder-open"></i> {{ browse_path_display }}</strong>
+            <div class="d-flex gap-2">
+                {% if parent_path %}
+                <a href="{% url 'select_files_for_drive' event.pk customer.pk %}?path={{ parent_path|urlencode }}"
+                   class="btn btn-sm btn-outline-secondary">
+                    <i class="fa-solid fa-arrow-up"></i> Up
+                </a>
+                {% endif %}
+                <a href="{% url 'select_files_for_drive' event.pk customer.pk %}"
+                   class="btn btn-sm btn-outline-secondary">
+                    <i class="fa-solid fa-home"></i> Event Folder
+                </a>
+            </div>
+        </div>
+        <div class="card-body p-0">
+            <div class="px-3 py-2 bg-light border-bottom">
+                <small class="text-muted font-monospace">{{ browse_path }}</small>
+            </div>
+            <table class="table table-sm table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th style="width:40px">
+                            <input type="checkbox" id="select-all" class="form-check-input">
+                        </th>
+                        <th>Name</th>
+                        <th style="width:100px" class="text-end">Size</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for folder in folders %}
+                    <tr>
+                        <td></td>
+                        <td>
+                            <a href="{% url 'select_files_for_drive' event.pk customer.pk %}?path={{ folder.path|urlencode }}"
+                               class="text-decoration-none">
+                                <i class="fa-solid fa-folder text-warning"></i> {{ folder.name }}
+                            </a>
+                        </td>
+                        <td></td>
+                    </tr>
+                    {% endfor %}
+                    {% for file in files %}
+                    <tr>
+                        <td>
+                            <input type="checkbox" class="form-check-input file-checkbox"
+                                   name="selected_files" value="{{ file.path }}">
+                        </td>
+                        <td>
+                            <i class="fa-solid fa-image text-muted"></i> {{ file.name }}
+                        </td>
+                        <td class="text-end text-muted small">{{ file.size }}</td>
+                    </tr>
+                    {% endfor %}
+                    {% if not folders and not files %}
+                    <tr>
+                        <td colspan="3" class="text-muted text-center py-3">Empty folder</td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+        <div class="card-footer d-flex justify-content-between align-items-center">
+            <span class="text-muted" id="selection-count">0 files selected</span>
+            <button type="submit" class="btn btn-success" id="upload-btn" disabled>
+                <i class="fa-brands fa-google-drive"></i> Upload Selected to Google Drive
+            </button>
+        </div>
+    </div>
+</form>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const selectAll = document.getElementById('select-all');
+    const checkboxes = document.querySelectorAll('.file-checkbox');
+    const uploadBtn = document.getElementById('upload-btn');
+    const countLabel = document.getElementById('selection-count');
+
+    function updateState() {
+        const checked = document.querySelectorAll('.file-checkbox:checked').length;
+        uploadBtn.disabled = checked === 0;
+        countLabel.textContent = checked + ' file' + (checked !== 1 ? 's' : '') + ' selected';
+        selectAll.checked = checkboxes.length > 0 && checked === checkboxes.length;
+        selectAll.indeterminate = checked > 0 && checked < checkboxes.length;
+    }
+
+    selectAll.addEventListener('change', function() {
+        checkboxes.forEach(function(cb) { cb.checked = selectAll.checked; });
+        updateState();
+    });
+
+    checkboxes.forEach(function(cb) {
+        cb.addEventListener('change', updateState);
+    });
+});
+</script>
+{% endblock %}

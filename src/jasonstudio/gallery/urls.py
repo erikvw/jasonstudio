@@ -36,9 +36,29 @@ urlpatterns = [
         name="order_fulfilment",
     ),
     path(
-        "event/<str:event_id>/orders/<str:customer_id>/fulfilment/update/",
-        views.update_order_fulfilment,
-        name="update_order_fulfilment",
+        "event/<str:event_id>/orders/<str:customer_id>/fulfilment/new-delivery/",
+        views.delivery_create,
+        name="delivery_create",
+    ),
+    path(
+        "event/<str:event_id>/orders/<str:customer_id>/fulfilment/mark-delivered/",
+        views.mark_order_delivered,
+        name="mark_order_delivered",
+    ),
+    path(
+        "event/<str:event_id>/orders/<str:customer_id>/fulfilment/reopen-delivery/",
+        views.reopen_order_delivery,
+        name="reopen_order_delivery",
+    ),
+    path(
+        "delivery/<str:delivery_id>/",
+        views.delivery_detail,
+        name="delivery_detail",
+    ),
+    path(
+        "delivery/<str:delivery_id>/delete/",
+        views.delivery_delete,
+        name="delivery_delete",
     ),
     path(
         "event/<str:event_id>/notes/",
@@ -59,6 +79,16 @@ urlpatterns = [
         "event/<str:event_id>/orders/<str:customer_id>/upload-to-drive/",
         views.upload_to_google_drive,
         name="upload_to_google_drive",
+    ),
+    path(
+        "event/<str:event_id>/orders/<str:customer_id>/select-files-for-drive/",
+        views.select_files_for_drive,
+        name="select_files_for_drive",
+    ),
+    path(
+        "event/<str:event_id>/orders/<str:customer_id>/upload-selected-to-drive/",
+        views.upload_selected_to_google_drive,
+        name="upload_selected_to_google_drive",
     ),
     path(
         "event/<str:event_id>/regenerate-thumbnails/",
