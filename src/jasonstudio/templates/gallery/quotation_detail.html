@@ -3,46 +3,63 @@
 {% block title %}Quotation {{ quotation.quote_number }} — Jason Studio{% endblock %}
 {% block extra_head %}
 <style>
+    @page { size: portrait; }
     @media print {
         .navbar, .no-print { display: none !important; }
         .card { border: none !important; box-shadow: none !important; }
     }
     .stamp-accepted, .stamp-declined, .stamp-expired {
-        position: absolute; top: 20px; right: 20px;
         border: 3px solid; font-size: 1.2rem; font-weight: bold;
-        padding: 4px 12px; transform: rotate(12deg); opacity: 0.6;
+        padding: 4px 16px; opacity: 0.6; text-align: center;
+        display: inline-block;
     }
     .stamp-accepted { border-color: #28a745; color: #28a745; }
     .stamp-declined { border-color: #dc3545; color: #dc3545; }
     .stamp-expired { border-color: #6c757d; color: #6c757d; }
     @media (min-width: 576px) {
         .stamp-accepted, .stamp-declined, .stamp-expired {
-            top: 40px; right: 40px; border-width: 4px;
-            font-size: 2rem; padding: 5px 20px;
+            border-width: 4px; font-size: 2rem; padding: 5px 24px;
         }
     }
 </style>
 {% endblock %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3 no-print flex-wrap gap-2">
+    {% if is_photographer_view %}
     <div class="d-flex gap-2 flex-wrap">
-        {% if is_photographer_view %}
-        <a href="{% url 'quotation_edit' event.pk customer.pk %}" class="btn btn-outline-dark">Edit</a>
-        <a href="{% url 'event_orders' event.pk %}" class="btn btn-outline-secondary">Back to Orders</a>
-        {% else %}
-        <a href="{% url 'customer_dashboard' %}" class="btn btn-outline-secondary">Back to Events</a>
+        {% if not is_locked %}<a href="{% url 'quotation_edit' event.pk customer.pk %}" class="btn btn-outline-dark">Edit</a>{% endif %}
+        {% if not is_locked %}
+        <form method="post" action="{% url 'quotation_delete' event.pk customer.pk %}"
+              onsubmit="return confirm('Delete quotation {{ quotation.quote_number }}?');" class="d-inline">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline-danger">Delete</button>
+        </form>
         {% endif %}
     </div>
-    <button class="btn btn-outline-dark" onclick="window.print()"><i class="fa-solid fa-print"></i> Print</button>
+    <div class="d-flex gap-2 flex-wrap">
+        <button class="btn btn-outline-dark" onclick="window.print()"><i class="fa-solid fa-print"></i> Print</button>
+        <a href="{% url 'event_orders' event.pk %}" class="btn btn-outline-secondary">Back to Quotes &amp; Orders</a>
+    </div>
+    {% else %}
+    <div></div>
+    <div class="d-flex gap-2 flex-wrap">
+        <button class="btn btn-outline-dark" onclick="window.print()"><i class="fa-solid fa-print"></i> Print</button>
+        <a href="{% url 'customer_dashboard' %}" class="btn btn-outline-secondary">Back to Events</a>
+    </div>
+    {% endif %}
 </div>
 
-<div class="card position-relative">
-    {% if quotation.status == 'accepted' %}
-    <div class="stamp-accepted">ACCEPTED</div>
-    {% elif quotation.status == 'declined' %}
-    <div class="stamp-declined">DECLINED</div>
-    {% elif quotation.is_expired %}
-    <div class="stamp-expired">EXPIRED</div>
+<div class="card">
+    {% if quotation.status == 'accepted' or quotation.status == 'declined' or quotation.is_expired %}
+    <div class="text-center pt-3 pb-0 no-print">
+        {% if quotation.status == 'accepted' %}
+        <span class="stamp-accepted">ACCEPTED</span>
+        {% elif quotation.status == 'declined' %}
+        <span class="stamp-declined">DECLINED</span>
+        {% elif quotation.is_expired %}
+        <span class="stamp-expired">EXPIRED</span>
+        {% endif %}
+    </div>
     {% endif %}
 
     <div class="card-body">
@@ -64,7 +81,7 @@
             <div class="col-sm-6 text-end">
                 <h4>Quotation</h4>
                 <p class="mb-0"><strong>Quote #:</strong> {{ quotation.quote_number }}</p>
-                <p class="mb-1"><strong>Date:</strong> {{ quotation.created|date:"N j, Y" }}</p>
+                <p class="mb-1"><strong>Date:</strong> {{ quotation.date|date:"N j, Y" }}</p>
                 {% if quotation.valid_until %}
                 <p class="mb-0"><strong>Valid Until:</strong> {{ quotation.valid_until|date:"N j, Y" }}</p>
                 {% endif %}
@@ -157,13 +174,22 @@
             by {{ quotation.accepted_by }}.
         </p>
         {% endif %}
+
+        <!-- Customer comments -->
+        <hr>
+        <div class="row mt-3">
+            <div class="col-12">
+                <strong>Customer Comments / Special Requests:</strong>
+                <div style="border-bottom: 1px solid #dee2e6; min-height: 5rem; margin-top: 0.5rem;"></div>
+            </div>
+        </div>
     </div>
 </div>
 
 <!-- Action buttons -->
 <div class="mt-3 no-print">
     {% if is_photographer_view %}
-        {% if quotation.status == 'draft' or quotation.status == 'sent' %}
+        {% if not is_locked and quotation.status == 'draft' or quotation.status == 'sent' %}
         <div class="d-flex gap-2">
             <form method="post" action="{% url 'quotation_accept' event.pk customer.pk %}">
                 {% csrf_token %}

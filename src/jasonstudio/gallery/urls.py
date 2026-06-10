@@ -21,14 +21,74 @@ urlpatterns = [
         name="customer_order_detail",
     ),
     path(
-        "event/<str:event_id>/orders/<str:customer_id>/status/",
-        views.update_order_status,
-        name="update_order_status",
+        "event/<str:event_id>/orders/<str:customer_id>/payment/",
+        views.record_payment,
+        name="record_payment",
+    ),
+    path(
+        "event/<str:event_id>/orders/<str:customer_id>/receipt/",
+        views.payment_receipt,
+        name="payment_receipt",
+    ),
+    path(
+        "event/<str:event_id>/orders/<str:customer_id>/fulfilment/",
+        views.order_fulfilment,
+        name="order_fulfilment",
+    ),
+    path(
+        "event/<str:event_id>/orders/<str:customer_id>/fulfilment/new-delivery/",
+        views.delivery_create,
+        name="delivery_create",
+    ),
+    path(
+        "event/<str:event_id>/orders/<str:customer_id>/fulfilment/mark-delivered/",
+        views.mark_order_delivered,
+        name="mark_order_delivered",
+    ),
+    path(
+        "event/<str:event_id>/orders/<str:customer_id>/fulfilment/reopen-delivery/",
+        views.reopen_order_delivery,
+        name="reopen_order_delivery",
+    ),
+    path(
+        "delivery/<str:delivery_id>/",
+        views.delivery_detail,
+        name="delivery_detail",
+    ),
+    path(
+        "delivery/<str:delivery_id>/delete/",
+        views.delivery_delete,
+        name="delivery_delete",
+    ),
+    path(
+        "event/<str:event_id>/notes/",
+        views.event_planning_notes,
+        name="event_planning_notes",
     ),
     path(
         "event/<str:event_id>/orders/<str:customer_id>/download/<str:zip_type>/",
         views.download_zip,
         name="download_zip",
+    ),
+    path(
+        "event/<str:event_id>/download-all/",
+        views.download_event_photos,
+        name="download_event_photos",
+    ),
+    path(
+        "event/<str:event_id>/orders/<str:customer_id>/upload-to-drive/",
+        views.upload_to_google_drive,
+        name="upload_to_google_drive",
+    ),
+    path(
+        "event/<str:event_id>/orders/<str:customer_id>/select-files-for-drive/",
+        views.select_files_for_drive,
+        name="select_files_for_drive",
+    ),
+    path(
+        "event/<str:event_id>/orders/<str:customer_id>/upload-selected-to-drive/",
+        views.upload_selected_to_google_drive,
+        name="upload_selected_to_google_drive",
     ),
     path(
         "event/<str:event_id>/regenerate-thumbnails/",
@@ -92,6 +152,11 @@ urlpatterns = [
         name="quotation_accept",
     ),
     path(
+        "photographer/event/<str:event_id>/quote/<str:customer_id>/delete/",
+        views.quotation_delete,
+        name="quotation_delete",
+    ),
+    path(
         "my-quotes/<str:event_id>/",
         views.customer_quotation_view,
         name="customer_quotation_view",
@@ -105,5 +170,29 @@ urlpatterns = [
         "my-quotes/<str:event_id>/decline/",
         views.customer_quotation_decline,
         name="customer_quotation_decline",
+    ),
+    # Utilities
+    path("photographer/utilities/", views.utilities, name="utilities"),
+    path(
+        "photographer/utilities/backup/", views.backup_database, name="backup_database"
+    ),
+    path(
+        "photographer/utilities/email-template/",
+        views.email_template_edit,
+        name="email_template_edit",
+    ),
+    # Download tokens (email-based)
+    path(
+        "event/<str:event_id>/orders/<str:customer_id>/send-download-email/",
+        views.send_download_email,
+        name="send_download_email",
+    ),
+    path(
+        "download/<str:token>/", views.token_download_page, name="token_download_page"
+    ),
+    path(
+        "download/<str:token>/file/",
+        views.token_download_file,
+        name="token_download_file",
     ),
 ]

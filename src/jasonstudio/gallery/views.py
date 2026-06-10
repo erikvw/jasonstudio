@@ -1,18 +1,26 @@
 from io import BytesIO
+from pathlib import Path
 
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.core.files.base import ContentFile
+from django.db.models import F
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from PIL import Image, ImageOps
 
 from jasonstudio.accounts.models import (
+    Delivery,
+    DeliveryItem,
+    DownloadToken,
     Invoice,
     InvoiceLineItem,
     Order,
+    Payment,
+    PhotographerProfile,
     Quotation,
     QuotationLineItem,
 )
@@ -43,12 +51,19 @@ def _get_customer(user):
 
 
 def home(request: HttpRequest) -> HttpResponse:
+    from jasonstudio.accounts.models import PhotographerProfile
+
     if request.user.is_authenticated:
         if _is_photographer(request.user):
             return redirect("photographer_dashboard")
         if _get_customer(request.user):
             return redirect("customer_dashboard")
-    return render(request, "gallery/home.html")
+    show_setup = (
+        request.user.is_authenticated
+        and request.user.is_superuser
+        and not PhotographerProfile.objects.exists()
+    )
+    return render(request, "gallery/home.html", {"show_photographer_setup": show_setup})
 
 
 @login_required
@@ -450,14 +465,40 @@ def manage_event(request: HttpRequest, event_id: str | None = None) -> HttpRespo
         event = None
 
     if request.method == "POST":
-        form = EventForm(request.POST, instance=event)
+        # Merge primary_customer + friends into the customers M2M field
+        post_data = request.POST.copy()
+        customer_ids = list(request.POST.getlist("friends"))
+        primary = request.POST.get("primary_customer", "")
+        if primary and primary not in customer_ids:
+            customer_ids.insert(0, primary)
+        post_data.setlist("customers", customer_ids)
+
+        form = EventForm(post_data, instance=event)
         if form.is_valid():
             form.save()
             return redirect("photographer_dashboard")
     else:
         form = EventForm(instance=event)
 
-    return render(request, "gallery/manage_event.html", {"form": form, "event": event})
+    # Determine primary customer and friends for the template
+    primary_customer_id = ""
+    friend_ids = set()
+    if event:
+        customer_ids = [str(c.pk) for c in event.customers.all()]
+        if customer_ids:
+            primary_customer_id = customer_ids[0]
+            friend_ids = {cid for cid in customer_ids[1:]}
+
+    return render(
+        request,
+        "gallery/manage_event.html",
+        {
+            "form": form,
+            "event": event,
+            "primary_customer_id": primary_customer_id,
+            "friend_ids": friend_ids,
+        },
+    )
 
 
 @login_required
@@ -511,7 +552,7 @@ def _build_invoice(order: Order) -> Invoice:
     customer = order.customer
 
     # Get or create invoice for this order
-    invoice = order.invoices.order_by("-created").first()
+    invoice = order.invoices.order_by("-date_created").first()
     if not invoice:
         invoice = Invoice(order=order)
 
@@ -525,25 +566,28 @@ def _build_invoice(order: Order) -> Invoice:
     digital_items = [s for s in selections if s.choice == "digital"]
     print_items = [s for s in selections if s.choice == "both"]
 
-    photographer_fee = order.photographer_hours * order.photographer_rate
+    quotation = order.quotation
 
-    # Build line items
+    # Build line items from the accepted quotation
     items = []
-    items.append(
-        {
-            "sort_order": 0,
-            "description": "Photography",
-            "filename": "",
-            "qty": order.photographer_hours,
-            "unit_cost": order.photographer_rate,
-            "price": photographer_fee,
-        }
-    )
+    for qi in quotation.line_items.all():
+        items.append(
+            {
+                "sort_order": qi.sort_order,
+                "description": qi.description,
+                "filename": "",
+                "qty": qi.qty,
+                "unit_cost": qi.unit_cost,
+                "price": qi.price,
+            }
+        )
+
+    next_sort = (items[-1]["sort_order"] + 1) if items else 0
 
     for i, s in enumerate(print_items):
         items.append(
             {
-                "sort_order": i + 1,
+                "sort_order": next_sort + i,
                 "description": f"Print & Digital — {s.get_print_size_display()}",
                 "filename": s.photo.filename,
                 "qty": Decimal("1"),
@@ -556,7 +600,7 @@ def _build_invoice(order: Order) -> Invoice:
     if digital_count:
         items.append(
             {
-                "sort_order": len(print_items) + 1,
+                "sort_order": next_sort + len(print_items),
                 "description": "Digital images",
                 "filename": "",
                 "qty": Decimal(digital_count),
@@ -567,7 +611,7 @@ def _build_invoice(order: Order) -> Invoice:
 
     # Compute totals
     subtotal = sum(item["price"] for item in items)
-    deposit = order.deposit_amount
+    deposit = quotation.deposit_amount
     photographer_profile = PhotographerProfile.objects.first()
     tax_rate = (
         Decimal(str(photographer_profile.tax_rate))
@@ -706,6 +750,7 @@ def event_orders(request: HttpRequest, event_id: str) -> HttpResponse:
 def customer_order_detail(
     request: HttpRequest, event_id: str, customer_id: str
 ) -> HttpResponse:
+    """Printable order document."""
     if not _is_photographer(request.user):
         return redirect("home")
 
@@ -715,21 +760,9 @@ def customer_order_detail(
     customer = get_object_or_404(Customer, pk=customer_id)
     order = get_object_or_404(Order, event=event, customer=customer)
 
-    selections = (
-        Selection.objects.filter(customer=customer, photo__event=event)
-        .select_related("photo")
-        .order_by("choice", "photo__sort_order")
-    )
-
-    digital_photos = [s.photo for s in selections if s.choice == "digital"]
-    print_selections = [s for s in selections if s.choice == "both"]
-    print_photos = [s.photo for s in print_selections]
-    print_sizes_by_photo = {
-        str(s.photo_id): s.get_print_size_display() for s in print_selections
-    }
-    rejected = Selection.objects.filter(
-        customer=customer, photo__event=event, choice="reject"
-    ).count()
+    quotation = order.quotation
+    quotation_line_items = quotation.line_items.all() if quotation else []
+    photographer = PhotographerProfile.objects.first()
 
     return render(
         request,
@@ -738,20 +771,90 @@ def customer_order_detail(
             "event": event,
             "customer": customer,
             "order": order,
-            "digital_photos": digital_photos,
-            "print_photos": print_photos,
-            "print_sizes_by_photo": print_sizes_by_photo,
-            "digital_delivery_count": len(digital_photos) + len(print_photos),
-            "rejected_count": rejected,
+            "quotation": quotation,
+            "quotation_line_items": quotation_line_items,
+            "photographer": photographer,
         },
     )
 
 
+def _scaffold_delivery_items(
+    delivery: Delivery,
+    digital_count: int,
+    print_count: int,
+) -> None:
+    """Create default line items on a delivery from order selection counts."""
+    items: list[DeliveryItem] = []
+    idx = 0
+    if digital_count:
+        items.append(
+            DeliveryItem(
+                delivery=delivery,
+                sort_order=idx,
+                description=f"Digital images ({digital_count})",
+                qty=digital_count,
+            )
+        )
+        idx += 1
+    if print_count:
+        items.append(
+            DeliveryItem(
+                delivery=delivery,
+                sort_order=idx,
+                description=f"Print & Digital images ({print_count})",
+                qty=print_count,
+            )
+        )
+    if items:
+        DeliveryItem.objects.bulk_create(items)
+
+
+def _build_mailto_url(
+    *,
+    email: str,
+    download_url: str,
+    customer_name: str,
+    event_name: str,
+    photographer: PhotographerProfile | None,
+) -> str:
+    """Render the photographer's email template into a mailto: URL."""
+    from urllib.parse import quote as urlquote
+
+    photographer_name = photographer.business_name if photographer else "Jason Studio"
+    subject_template = (
+        photographer.email_subject_template
+        if photographer
+        else 'Your photos from "{event_name}" are ready'
+    )
+    body_template = (
+        photographer.email_body_template
+        if photographer
+        else (
+            "Hi {customer_name},\n\n"
+            'Your photos from "{event_name}" are ready for download.\n\n'
+            "{download_url}\n\n"
+            "Thank you for choosing {photographer_name}."
+        )
+    )
+    replacements = {
+        "customer_name": customer_name,
+        "event_name": event_name,
+        "photographer_name": photographer_name,
+        "download_url": download_url,
+    }
+    subject = subject_template
+    body = body_template
+    for key, val in replacements.items():
+        subject = subject.replace(f"{{{key}}}", val)
+        body = body.replace(f"{{{key}}}", val)
+    return f"mailto:{email}?subject={urlquote(subject)}&body={urlquote(body)}"
+
+
 @login_required
-@require_POST
-def update_order_status(
+def order_fulfilment(
     request: HttpRequest, event_id: str, customer_id: str
 ) -> HttpResponse:
+    """Fulfilment page: payment, delivery, and downloads."""
     if not _is_photographer(request.user):
         return redirect("home")
 
@@ -761,50 +864,426 @@ def update_order_status(
     customer = get_object_or_404(Customer, pk=customer_id)
     order = get_object_or_404(Order, event=event, customer=customer)
 
-    from django.utils import timezone as tz
+    selections = Selection.objects.filter(
+        customer=customer, photo__event=event
+    ).exclude(choice="reject")
+    print_photos = [
+        s.photo for s in selections.filter(choice="both").select_related("photo")
+    ]
 
-    new_status = request.POST.get("status", "")
-    update_fields = ["modified"]
+    download_tokens = DownloadToken.objects.filter(
+        order=order, customer=customer
+    ).order_by("-date_created")
 
-    if new_status in {c.value for c in Order.Status}:
-        order.status = new_status
-        update_fields.append("status")
-        # Record paid_at timestamp when marking as paid
-        if new_status == Order.Status.PAID and not order.paid_at:
-            order.paid_at = tz.now()
-            update_fields.append("paid_at")
+    photographer = PhotographerProfile.objects.first()
+    customer_name = customer.user.get_full_name() or customer.user.username
 
-    if request.POST.get("update_fee"):
-        from decimal import Decimal, InvalidOperation
+    # Check if Google Drive is configured
+    from .google_drive import is_drive_configured
 
-        try:
-            order.photographer_hours = Decimal(
-                request.POST.get("photographer_hours", "0")
+    drive_configured = is_drive_configured()
+
+    # Delivery history for this order
+    deliveries = order.deliveries.prefetch_related("items").all()
+
+    # mailto with token-based download link
+    mailto_url = ""
+    if customer.user.email and download_tokens:
+        latest_token = download_tokens.first()
+        if latest_token and latest_token.is_valid:
+            token_url = request.build_absolute_uri(f"/download/{latest_token.token}/")
+            mailto_url = _build_mailto_url(
+                email=customer.user.email,
+                download_url=token_url,
+                customer_name=customer_name,
+                event_name=event.name,
+                photographer=photographer,
             )
-        except InvalidOperation, ValueError:
-            pass
-        else:
-            update_fields.append("photographer_hours")
 
-        try:
-            order.photographer_rate = Decimal(
-                request.POST.get("photographer_rate", "0")
+    # Attach a mailto URL to each delivery that has a URL
+    for d in deliveries:
+        if d.url and customer.user.email:
+            d.mailto_url = _build_mailto_url(
+                email=customer.user.email,
+                download_url=d.url,
+                customer_name=customer_name,
+                event_name=event.name,
+                photographer=photographer,
             )
-        except InvalidOperation, ValueError:
-            pass
         else:
-            update_fields.append("photographer_rate")
+            d.mailto_url = ""
 
+    return render(
+        request,
+        "gallery/order_fulfilment.html",
+        {
+            "event": event,
+            "customer": customer,
+            "order": order,
+            "photographer": photographer,
+            "print_photos": print_photos,
+            "download_tokens": download_tokens,
+            "deliveries": deliveries,
+            "mailto_url": mailto_url,
+            "drive_configured": drive_configured,
+        },
+    )
+
+
+@login_required
+def delivery_detail(request: HttpRequest, delivery_id: str) -> HttpResponse:
+    """View or edit a delivery note."""
+    if not _is_photographer(request.user):
+        return redirect("home")
+
+    delivery = get_object_or_404(
+        Delivery.objects.prefetch_related("items"),
+        pk=delivery_id,
+    )
+    order = delivery.order
+    event = order.event
+    customer = order.customer
+
+    if request.method == "POST":
+        delivery.notes = request.POST.get("notes", "").strip()
+        url = request.POST.get("url", "").strip()
+        delivery.url = url
+        delivery.save(update_fields=["notes", "url", "date_modified"])
+
+        # Replace line items from form
+        delivery.items.all().delete()
+        idx = 0
+        while True:
+            desc = request.POST.get(f"item_{idx}_description", "").strip()
+            if not desc and idx > 0:
+                break
+            if desc:
+                qty = int(request.POST.get(f"item_{idx}_qty", "1") or "1")
+                DeliveryItem.objects.create(
+                    delivery=delivery,
+                    sort_order=idx,
+                    description=desc,
+                    qty=max(qty, 1),
+                )
+            idx += 1
+            if idx > 50:
+                break
+
+        return redirect(
+            "order_fulfilment",
+            event_id=event.pk,
+            customer_id=customer.pk,
+        )
+
+    return render(
+        request,
+        "gallery/delivery_detail.html",
+        {
+            "delivery": delivery,
+            "items": delivery.items.all(),
+            "order": order,
+            "event": event,
+            "customer": customer,
+        },
+    )
+
+
+@require_POST
+@login_required
+def delivery_delete(request: HttpRequest, delivery_id: str) -> HttpResponse:
+    """Delete a delivery note and update the order status."""
+    if not _is_photographer(request.user):
+        return redirect("home")
+
+    delivery = get_object_or_404(Delivery, pk=delivery_id)
+    order = delivery.order
+    event = order.event
+    customer = order.customer
+
+    delivery.delete()
+    order.update_delivery_status()
+
+    return redirect("order_fulfilment", event_id=event.pk, customer_id=customer.pk)
+
+
+@login_required
+def delivery_create(
+    request: HttpRequest, event_id: str, customer_id: str
+) -> HttpResponse:
+    """Photographer creates a new manual delivery note."""
+    if not _is_photographer(request.user):
+        return redirect("home")
+
+    from jasonstudio.accounts.models import Customer as CustomerModel
+
+    event = get_object_or_404(Event, pk=event_id)
+    customer = get_object_or_404(CustomerModel, pk=customer_id)
+    order = get_object_or_404(Order, event=event, customer=customer)
+
+    if request.method == "POST":
+        method = request.POST.get("method", Delivery.Method.MANUAL)
+        if method not in {c.value for c in Delivery.Method}:
+            method = Delivery.Method.MANUAL
+        notes = request.POST.get("notes", "").strip()
+        url = request.POST.get("url", "").strip()
+
+        delivery = Delivery.objects.create(
+            order=order,
+            method=method,
+            url=url,
+            notes=notes,
+        )
+
+        # Save line items from form
+        idx = 0
+        while True:
+            desc = request.POST.get(f"item_{idx}_description", "").strip()
+            if not desc and idx > 0:
+                break
+            if desc:
+                qty = int(request.POST.get(f"item_{idx}_qty", "1") or "1")
+                DeliveryItem.objects.create(
+                    delivery=delivery,
+                    sort_order=idx,
+                    description=desc,
+                    qty=max(qty, 1),
+                )
+            idx += 1
+            if idx > 50:
+                break
+
+        order.update_delivery_status()
+        return redirect(
+            "order_fulfilment",
+            event_id=event.pk,
+            customer_id=customer.pk,
+        )
+
+    # Scaffold default items from order selections
+    selections = Selection.objects.filter(
+        customer=customer, photo__event=event
+    ).exclude(choice="reject")
+    digital_count = selections.filter(choice__in=["digital", "both"]).count()
+    print_count = selections.filter(choice="both").count()
+
+    scaffold_items = []
+    idx = 0
+    if digital_count:
+        scaffold_items.append(
+            {
+                "sort_order": idx,
+                "description": f"Digital images ({digital_count})",
+                "qty": digital_count,
+            }
+        )
+        idx += 1
+    if print_count:
+        scaffold_items.append(
+            {
+                "sort_order": idx,
+                "description": f"Print & Digital images ({print_count})",
+                "qty": print_count,
+            }
+        )
+
+    return render(
+        request,
+        "gallery/delivery_form.html",
+        {
+            "event": event,
+            "customer": customer,
+            "order": order,
+            "scaffold_items": scaffold_items,
+            "delivery_methods": Delivery.Method.choices,
+        },
+    )
+
+
+@login_required
+@require_POST
+def mark_order_delivered(
+    request: HttpRequest, event_id: str, customer_id: str
+) -> HttpResponse:
+    """Photographer marks order as fully delivered."""
+    if not _is_photographer(request.user):
+        return redirect("home")
+
+    from jasonstudio.accounts.models import Customer as CustomerModel
+
+    event = get_object_or_404(Event, pk=event_id)
+    customer = get_object_or_404(CustomerModel, pk=customer_id)
+    order = get_object_or_404(Order, event=event, customer=customer)
+
+    order.status = Order.Status.DELIVERED
+    order.save(update_fields=["status", "date_modified"])
+
+    return redirect("order_fulfilment", event_id=event.pk, customer_id=customer.pk)
+
+
+@login_required
+@require_POST
+def reopen_order_delivery(
+    request: HttpRequest, event_id: str, customer_id: str
+) -> HttpResponse:
+    """Photographer reopens a delivered order (undo mark as delivered)."""
+    if not _is_photographer(request.user):
+        return redirect("home")
+
+    from jasonstudio.accounts.models import Customer as CustomerModel
+
+    event = get_object_or_404(Event, pk=event_id)
+    customer = get_object_or_404(CustomerModel, pk=customer_id)
+    order = get_object_or_404(Order, event=event, customer=customer)
+
+    # Recalculate based on actual deliveries
+    if order.deliveries.exists():
+        order.status = Order.Status.PARTIALLY_DELIVERED
+    else:
+        order.status = Order.Status.IN_PROGRESS
+    order.save(update_fields=["status", "date_modified"])
+
+    return redirect("order_fulfilment", event_id=event.pk, customer_id=customer.pk)
+
+
+@login_required
+def record_payment(
+    request: HttpRequest, event_id: str, customer_id: str
+) -> HttpResponse:
+    """Photographer records a payment against the customer's invoice."""
+    if not _is_photographer(request.user):
+        return redirect("home")
+
+    from decimal import Decimal, InvalidOperation
+
+    from jasonstudio.accounts.models import Customer as CustomerModel
+
+    event = get_object_or_404(Event, pk=event_id)
+    customer = get_object_or_404(CustomerModel, pk=customer_id)
+    order = get_object_or_404(Order, event=event, customer=customer)
+    invoice = _build_invoice(order)
+
+    # Don't allow duplicate payment if already paid
+    if invoice.status == Invoice.Status.PAID:
+        return redirect(
+            "payment_receipt",
+            event_id=event.pk,
+            customer_id=customer.pk,
+        )
+
+    error = ""
+    if request.method == "POST":
+        import datetime
+
+        payment_date = request.POST.get("date", "").strip()
         try:
-            order.deposit_amount = Decimal(request.POST.get("deposit_amount", "0"))
+            amount = Decimal(request.POST.get("amount", "0"))
         except InvalidOperation, ValueError:
-            pass
+            amount = Decimal("0")
+        method = request.POST.get("method", Payment.Method.ETRANSFER)
+        reference = request.POST.get("reference", "").strip()
+        notes = request.POST.get("notes", "").strip()
+
+        if amount <= 0:
+            error = "Amount must be greater than zero."
+        elif method not in {c.value for c in Payment.Method}:
+            error = "Invalid payment method."
         else:
-            update_fields.append("deposit_amount")
+            payment = Payment(
+                invoice=invoice,
+                amount=amount,
+                method=method,
+                reference=reference,
+                notes=notes,
+            )
+            if payment_date:
+                try:
+                    payment.date = datetime.date.fromisoformat(payment_date)
+                except ValueError:
+                    pass
+            payment.full_clean()
+            payment.save()
+            return redirect(
+                "payment_receipt",
+                event_id=event.pk,
+                customer_id=customer.pk,
+            )
 
-    order.save(update_fields=update_fields)
+    photographer = PhotographerProfile.objects.first()
 
-    return redirect("customer_order_detail", event_id=event.pk, customer_id=customer.pk)
+    return render(
+        request,
+        "gallery/record_payment.html",
+        {
+            "event": event,
+            "customer": customer,
+            "order": order,
+            "invoice": invoice,
+            "photographer": photographer,
+            "payment_methods": Payment.Method.choices,
+            "error": error,
+        },
+    )
+
+
+@login_required
+def payment_receipt(
+    request: HttpRequest, event_id: str, customer_id: str
+) -> HttpResponse:
+    """Display a printable receipt for the customer."""
+    if not _is_photographer(request.user):
+        return redirect("home")
+
+    from jasonstudio.accounts.models import Customer as CustomerModel
+
+    event = get_object_or_404(Event, pk=event_id)
+    customer = get_object_or_404(CustomerModel, pk=customer_id)
+    order = get_object_or_404(Order, event=event, customer=customer)
+    invoice = order.invoices.order_by("-date_created").first()
+    if not invoice:
+        return redirect(
+            "customer_order_detail", event_id=event.pk, customer_id=customer.pk
+        )
+
+    payment = invoice.payments.order_by("date_created").first()
+    if not payment:
+        return redirect(
+            "customer_order_detail", event_id=event.pk, customer_id=customer.pk
+        )
+
+    photographer = PhotographerProfile.objects.first()
+
+    return render(
+        request,
+        "gallery/payment_receipt.html",
+        {
+            "event": event,
+            "customer": customer,
+            "order": order,
+            "invoice": invoice,
+            "payment": payment,
+            "photographer": photographer,
+        },
+    )
+
+
+@login_required
+def event_planning_notes(request: HttpRequest, event_id: str) -> HttpResponse:
+    """Photographer views/edits internal planning notes for an event."""
+    if not _is_photographer(request.user):
+        return redirect("home")
+
+    event = get_object_or_404(Event, pk=event_id)
+
+    if request.method == "POST":
+        event.planning_notes = request.POST.get("planning_notes", "")
+        event.save(update_fields=["planning_notes", "modified"])
+        return redirect("photographer_dashboard")
+
+    return render(
+        request,
+        "gallery/event_planning_notes.html",
+        {"event": event},
+    )
 
 
 @login_required
@@ -848,6 +1327,289 @@ def download_zip(
     response = HttpResponse(buffer.read(), content_type="application/zip")
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
     return response
+
+
+@login_required
+def download_event_photos(request: HttpRequest, event_id: str) -> HttpResponse:
+    """Photographer downloads all original photos for an event as a zip."""
+    import zipfile
+
+    if not _is_photographer(request.user):
+        return redirect("home")
+
+    event = get_object_or_404(Event, pk=event_id)
+    photos = event.photos.all().order_by("sort_order")
+
+    if not photos.exists():
+        return HttpResponse("No photos in this event.", status=404)
+
+    buffer = BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for photo in photos:
+            if photo.original:
+                zf.write(photo.original.path, photo.filename or photo.original.name)
+
+    buffer.seek(0)
+    filename = f"{event.name}_all_photos.zip"
+    response = HttpResponse(buffer.read(), content_type="application/zip")
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
+
+
+@login_required
+@require_POST
+def upload_to_google_drive(
+    request: HttpRequest, event_id: str, customer_id: str
+) -> HttpResponse:
+    """Photographer uploads a customer's digital delivery zip to Google Drive."""
+    import tempfile
+    import zipfile
+
+    from django.contrib import messages
+
+    if not _is_photographer(request.user):
+        return redirect("home")
+
+    from jasonstudio.accounts.models import Customer as CustomerModel
+
+    from .google_drive import is_drive_configured, upload_to_drive
+
+    event = get_object_or_404(Event, pk=event_id)
+    customer = get_object_or_404(CustomerModel, pk=customer_id)
+    order = get_object_or_404(Order, event=event, customer=customer)
+
+    if not is_drive_configured():
+        messages.error(
+            request,
+            "Google Drive is not configured. "
+            "Set GOOGLE_DRIVE_CREDENTIALS_FILE and GOOGLE_DRIVE_FOLDER_ID.",
+        )
+        return redirect(
+            "customer_order_detail", event_id=event.pk, customer_id=customer.pk
+        )
+
+    # Build the zip of all digital delivery photos
+    selections = list(
+        Selection.objects.filter(customer=customer, photo__event=event)
+        .exclude(choice="reject")
+        .select_related("photo")
+    )
+    digital_photos = [s.photo for s in selections if s.choice in ("digital", "both")]
+    digital_count = len(digital_photos)
+    print_count = sum(1 for s in selections if s.choice == "both")
+
+    if not digital_photos:
+        messages.warning(request, "No photos to upload.")
+        return redirect("order_fulfilment", event_id=event.pk, customer_id=customer.pk)
+
+    zip_filename = f"{event.name}_{customer}_digital.zip"
+
+    with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
+        tmp_path = tmp.name
+        with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zf:
+            for photo in digital_photos:
+                if photo.original:
+                    zf.write(
+                        photo.original.path,
+                        photo.filename or photo.original.name,
+                    )
+
+    try:
+        drive_url = upload_to_drive(tmp_path, zip_filename)
+        delivery = Delivery.objects.create(
+            order=order,
+            method=Delivery.Method.GOOGLE_DRIVE,
+            url=drive_url,
+            notes=f"Uploaded {zip_filename}",
+        )
+        _scaffold_delivery_items(delivery, digital_count, print_count)
+        order.update_delivery_status()
+        messages.success(
+            request,
+            f"Uploaded to Google Drive. Link: {drive_url}",
+        )
+    except Exception as exc:
+        messages.error(request, f"Google Drive upload failed: {exc}")
+    finally:
+        import os
+
+        os.unlink(tmp_path)
+
+    return redirect("order_fulfilment", event_id=event.pk, customer_id=customer.pk)
+
+
+@login_required
+def select_files_for_drive(
+    request: HttpRequest, event_id: str, customer_id: str
+) -> HttpResponse:
+    """File browser for selecting files to upload to Google Drive."""
+    if not _is_photographer(request.user):
+        return redirect("home")
+
+    from jasonstudio.accounts.models import Customer as CustomerModel
+
+    event = get_object_or_404(Event, pk=event_id)
+    customer = get_object_or_404(CustomerModel, pk=customer_id)
+    order = get_object_or_404(Order, event=event, customer=customer)
+
+    media_root = Path(settings.MEDIA_ROOT)
+    event_folder = media_root / "photos" / str(event.pk)
+    # Default to the event folder, allow navigation via ?path=
+    browse_path_str = request.GET.get("path", "")
+    if browse_path_str:
+        browse_path = Path(browse_path_str).resolve()
+    else:
+        browse_path = event_folder.resolve()
+
+    # Ensure the path exists and is a directory
+    if not browse_path.exists() or not browse_path.is_dir():
+        browse_path = event_folder.resolve()
+
+    # Build directory listing
+    folders: list[dict[str, str]] = []
+    files: list[dict[str, object]] = []
+
+    # Parent folder navigation
+    parent_path = browse_path.parent
+    has_parent = browse_path != browse_path.parent
+
+    image_extensions = {
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".tif",
+        ".tiff",
+        ".raw",
+        ".cr2",
+        ".nef",
+        ".arw",
+        ".dng",
+        ".psd",
+        ".zip",
+    }
+
+    try:
+        for entry in sorted(
+            browse_path.iterdir(), key=lambda e: (not e.is_dir(), e.name)
+        ):
+            if entry.name.startswith("."):
+                continue
+            if entry.is_dir():
+                folders.append({"name": entry.name, "path": str(entry)})
+            elif entry.is_file():
+                suffix = entry.suffix.lower()
+                if suffix in image_extensions:
+                    size_mb = entry.stat().st_size / (1024 * 1024)
+                    files.append(
+                        {
+                            "name": entry.name,
+                            "path": str(entry),
+                            "size": f"{size_mb:.1f} MB",
+                        }
+                    )
+    except PermissionError:
+        from django.contrib import messages
+
+        messages.error(request, f"Permission denied: {browse_path}")
+
+    return render(
+        request,
+        "gallery/select_files_for_drive.html",
+        {
+            "event": event,
+            "customer": customer,
+            "order": order,
+            "browse_path": str(browse_path),
+            "browse_path_display": browse_path.name or str(browse_path),
+            "parent_path": str(parent_path) if has_parent else "",
+            "event_folder": str(event_folder),
+            "folders": folders,
+            "files": files,
+        },
+    )
+
+
+@require_POST
+@login_required
+def upload_selected_to_google_drive(
+    request: HttpRequest, event_id: str, customer_id: str
+) -> HttpResponse:
+    """Upload photographer-selected files to Google Drive."""
+    import tempfile
+    import zipfile
+
+    from django.contrib import messages
+
+    if not _is_photographer(request.user):
+        return redirect("home")
+
+    from jasonstudio.accounts.models import Customer as CustomerModel
+
+    from .google_drive import is_drive_configured, upload_to_drive
+
+    event = get_object_or_404(Event, pk=event_id)
+    customer = get_object_or_404(CustomerModel, pk=customer_id)
+    order = get_object_or_404(Order, event=event, customer=customer)
+
+    if not is_drive_configured():
+        messages.error(
+            request,
+            "Google Drive is not configured. "
+            "Set GOOGLE_DRIVE_CREDENTIALS_FILE and GOOGLE_DRIVE_FOLDER_ID.",
+        )
+        return redirect("order_fulfilment", event_id=event.pk, customer_id=customer.pk)
+
+    selected_files = request.POST.getlist("selected_files")
+    if not selected_files:
+        messages.warning(request, "No files selected.")
+        return redirect("order_fulfilment", event_id=event.pk, customer_id=customer.pk)
+
+    # Validate all paths are real files
+    valid_paths: list[Path] = []
+    for fp in selected_files:
+        p = Path(fp).resolve()
+        if p.is_file():
+            valid_paths.append(p)
+
+    if not valid_paths:
+        messages.warning(request, "No valid files found.")
+        return redirect("order_fulfilment", event_id=event.pk, customer_id=customer.pk)
+
+    zip_filename = f"{event.name}_{customer}_selected.zip"
+
+    with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
+        tmp_path = tmp.name
+        with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zf:
+            for p in valid_paths:
+                zf.write(p, p.name)
+
+    try:
+        drive_url = upload_to_drive(tmp_path, zip_filename)
+        delivery = Delivery.objects.create(
+            order=order,
+            method=Delivery.Method.GOOGLE_DRIVE,
+            url=drive_url,
+            notes=f"Uploaded {len(valid_paths)} selected file(s)",
+        )
+        DeliveryItem.objects.create(
+            delivery=delivery,
+            sort_order=0,
+            description=f"Selected files ({len(valid_paths)})",
+            qty=len(valid_paths),
+        )
+        order.update_delivery_status()
+        messages.success(
+            request,
+            f"Uploaded {len(valid_paths)} file(s) to Google Drive. Link: {drive_url}",
+        )
+    except Exception as exc:
+        messages.error(request, f"Google Drive upload failed: {exc}")
+    finally:
+        import os
+
+        os.unlink(tmp_path)
+
+    return redirect("order_fulfilment", event_id=event.pk, customer_id=customer.pk)
 
 
 @login_required
@@ -926,6 +1688,7 @@ def service_edit(request: HttpRequest, service_id: str | None = None) -> HttpRes
         except InvalidOperation, ValueError:
             default_rate = Decimal("0")
         sort_order = int(request.POST.get("sort_order", "0") or "0")
+        is_default = request.POST.get("is_default") == "on"
         is_active = request.POST.get("is_active") == "on"
 
         if not name:
@@ -945,6 +1708,7 @@ def service_edit(request: HttpRequest, service_id: str | None = None) -> HttpRes
             service.unit_type = unit_type
             service.default_rate = default_rate
             service.sort_order = sort_order
+            service.is_default = is_default
             service.is_active = is_active
             service.save()
         else:
@@ -954,6 +1718,7 @@ def service_edit(request: HttpRequest, service_id: str | None = None) -> HttpRes
                 unit_type=unit_type,
                 default_rate=default_rate,
                 sort_order=sort_order,
+                is_default=is_default,
                 is_active=is_active,
             )
         return redirect("service_list")
@@ -995,7 +1760,7 @@ def _build_quotation_totals(quotation: Quotation) -> None:
     quotation.tax_amount = tax_amount
     quotation.total = total
     quotation.save(
-        update_fields=["subtotal", "tax_rate", "tax_amount", "total", "modified"]
+        update_fields=["subtotal", "tax_rate", "tax_amount", "total", "date_modified"]
     )
 
 
@@ -1019,16 +1784,47 @@ def quotation_edit(
         customer=customer,
     )
 
+    # Auto-populate default services on a brand-new quotation
+    if _created:
+        from decimal import Decimal
+
+        default_services = Service.objects.filter(
+            is_active=True, is_default=True
+        ).order_by("sort_order")
+        for idx, svc in enumerate(default_services):
+            QuotationLineItem.objects.create(
+                quotation=quotation,
+                service=svc,
+                sort_order=idx,
+                description=svc.name,
+                qty=Decimal("1"),
+                unit_cost=svc.default_rate,
+                price=svc.default_rate,
+            )
+        if default_services.exists():
+            _build_quotation_totals(quotation)
+
+    # Lock editing if invoice is paid
+    existing_order = Order.objects.filter(event=event, customer=customer).first()
+    if existing_order and existing_order.is_paid:
+        return redirect("quotation_view", event_id=event.pk, customer_id=customer.pk)
+
     if request.method == "POST":
-        # Save deposit and validity
+        # Save date, deposit, and validity
+        import datetime
+
+        quote_date = request.POST.get("date", "").strip()
+        if quote_date:
+            try:
+                quotation.date = datetime.date.fromisoformat(quote_date)
+            except ValueError:
+                pass
         try:
             quotation.deposit_amount = Decimal(request.POST.get("deposit_amount", "0"))
         except InvalidOperation, ValueError:
             pass
         valid_until = request.POST.get("valid_until", "").strip()
         if valid_until:
-            import datetime
-
             try:
                 quotation.valid_until = datetime.date.fromisoformat(valid_until)
             except ValueError:
@@ -1036,8 +1832,22 @@ def quotation_edit(
         else:
             quotation.valid_until = None
         quotation.notes = request.POST.get("notes", "").strip()
+        # Reset accepted status when quotation is edited
+        if quotation.status == Quotation.Status.ACCEPTED:
+            quotation.status = Quotation.Status.DRAFT
+            quotation.accepted_at = None
+            quotation.accepted_by = ""
         quotation.save(
-            update_fields=["deposit_amount", "valid_until", "notes", "modified"]
+            update_fields=[
+                "date",
+                "deposit_amount",
+                "valid_until",
+                "notes",
+                "status",
+                "accepted_at",
+                "accepted_by",
+                "date_modified",
+            ]
         )
 
         # Replace line items from form
@@ -1107,6 +1917,10 @@ def quotation_view(
     quotation = get_object_or_404(Quotation, event=event, customer=customer)
     photographer = PhotographerProfile.objects.first()
 
+    # Check if invoice is paid (locks editing)
+    existing_order = Order.objects.filter(event=event, customer=customer).first()
+    is_locked = existing_order.is_paid if existing_order else False
+
     return render(
         request,
         "gallery/quotation_detail.html",
@@ -1117,6 +1931,7 @@ def quotation_view(
             "line_items": quotation.line_items.all(),
             "photographer": photographer,
             "is_photographer_view": True,
+            "is_locked": is_locked,
         },
     )
 
@@ -1141,6 +1956,36 @@ def quotation_accept(
 
     quotation.accept(by="photographer")
     return redirect("customer_order_detail", event_id=event.pk, customer_id=customer.pk)
+
+
+@login_required
+@require_POST
+def quotation_delete(
+    request: HttpRequest, event_id: str, customer_id: str
+) -> HttpResponse:
+    """Photographer deletes a quotation. Blocked if an order references it."""
+    if not _is_photographer(request.user):
+        return redirect("home")
+
+    from django.contrib import messages
+    from django.db.models import ProtectedError
+
+    from jasonstudio.accounts.models import Customer as CustomerModel
+
+    event = get_object_or_404(Event, pk=event_id)
+    customer = get_object_or_404(CustomerModel, pk=customer_id)
+    quotation = get_object_or_404(Quotation, event=event, customer=customer)
+
+    try:
+        quotation.delete()
+        messages.success(request, f"Quotation {quotation.quote_number} deleted.")
+    except ProtectedError:
+        messages.error(
+            request,
+            f"Cannot delete {quotation.quote_number} — "
+            f"an order references this quotation. Delete the order first.",
+        )
+    return redirect("event_orders", event_id=event.pk)
 
 
 @login_required
@@ -1203,7 +2048,7 @@ def customer_quotation_decline(request: HttpRequest, event_id: str) -> HttpRespo
 
     if quotation.status in (Quotation.Status.SENT, Quotation.Status.DRAFT):
         quotation.status = Quotation.Status.DECLINED
-        quotation.save(update_fields=["status", "modified"])
+        quotation.save(update_fields=["status", "date_modified"])
 
     return redirect("customer_quotation_view", event_id=event.pk)
 
@@ -1325,3 +2170,286 @@ def shared_download_file(request: HttpRequest, code: str) -> HttpResponse:
     response = HttpResponse(buffer.read(), content_type="application/zip")
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
     return response
+
+
+# --- Download Token (email-based download) ---
+
+
+@login_required
+@require_POST
+def send_download_email(
+    request: HttpRequest, event_id: str, customer_id: str
+) -> HttpResponse:
+    """Photographer sends a download link to the customer's email."""
+    from django.contrib import messages
+    from django.core.mail import send_mail
+    from django.template.loader import render_to_string
+
+    if not _is_photographer(request.user):
+        return redirect("home")
+
+    from jasonstudio.accounts.models import Customer as CustomerModel
+
+    event = get_object_or_404(Event, pk=event_id)
+    customer = get_object_or_404(CustomerModel, pk=customer_id)
+    order = get_object_or_404(Order, event=event, customer=customer)
+
+    if not order.is_paid:
+        messages.error(request, "Order must be paid before sending a download link.")
+        return redirect(
+            "customer_order_detail", event_id=event.pk, customer_id=customer.pk
+        )
+
+    # Resolve the customer's email
+    email = customer.user.email
+    if not email:
+        messages.error(
+            request,
+            "This customer has no email address. "
+            "Add one before sending a download link.",
+        )
+        return redirect(
+            "customer_order_detail", event_id=event.pk, customer_id=customer.pk
+        )
+
+    # Create the token
+    token = DownloadToken.objects.create(
+        order=order,
+        customer=customer,
+        sent_to_email=email,
+    )
+
+    photographer = PhotographerProfile.objects.first()
+    download_url = request.build_absolute_uri(f"/download/{token.token}/")
+
+    subject = render_to_string(
+        "accounts/download_email_subject.txt",
+        {"event_name": event.name},
+    ).strip()
+
+    body = render_to_string(
+        "accounts/download_email.txt",
+        {
+            "customer_name": customer.user.get_full_name() or customer.user.username,
+            "event_name": event.name,
+            "download_url": download_url,
+            "expires_at": token.expires_at,
+            "photographer_name": (photographer.business_name if photographer else "us"),
+        },
+    )
+
+    from_email = getattr(settings, "DEFAULT_FROM_EMAIL", None)
+    if photographer and photographer.email:
+        from_email = photographer.email
+
+    send_mail(subject, body, from_email, [email])
+
+    token.sent_at = timezone.now()
+    token.save(update_fields=["sent_at"])
+
+    # Create a Delivery with scaffolded items
+    selections = Selection.objects.filter(
+        customer=customer, photo__event=event
+    ).exclude(choice="reject")
+    digital_count = selections.filter(choice__in=["digital", "both"]).count()
+    print_count = selections.filter(choice="both").count()
+    if digital_count:
+        delivery = Delivery.objects.create(
+            order=order,
+            method=Delivery.Method.EMAIL,
+            url=download_url,
+            notes=f"Email sent to {email}",
+        )
+        _scaffold_delivery_items(delivery, digital_count, print_count)
+        order.update_delivery_status()
+
+    messages.success(request, f"Download link sent to {email}.")
+    return redirect("order_fulfilment", event_id=event.pk, customer_id=customer.pk)
+
+
+def token_download_page(request: HttpRequest, token: str) -> HttpResponse:
+    """Public page where customer downloads their photos via a token link."""
+    dl_token = get_object_or_404(DownloadToken, token=token)
+
+    if dl_token.is_expired:
+        return render(request, "gallery/token_expired.html", {"token": dl_token})
+
+    order = dl_token.order
+    event = order.event
+
+    selections = (
+        Selection.objects.filter(customer=dl_token.customer, photo__event=event)
+        .exclude(choice="reject")
+        .select_related("photo")
+    )
+
+    return render(
+        request,
+        "gallery/token_download.html",
+        {
+            "token": dl_token,
+            "order": order,
+            "event": event,
+            "photo_count": selections.count(),
+        },
+    )
+
+
+def token_download_file(request: HttpRequest, token: str) -> HttpResponse:
+    """Serve the zip file for a valid download token."""
+    import zipfile
+
+    dl_token = get_object_or_404(DownloadToken, token=token)
+
+    if dl_token.is_expired:
+        return render(request, "gallery/token_expired.html", {"token": dl_token})
+
+    order = dl_token.order
+    event = order.event
+
+    photos = [
+        s.photo
+        for s in Selection.objects.filter(
+            customer=dl_token.customer, photo__event=event
+        )
+        .exclude(choice="reject")
+        .select_related("photo")
+    ]
+
+    # Increment counts
+    dl_token.download_count += 1
+    dl_token.save(update_fields=["download_count"])
+    Order.objects.filter(pk=order.pk).update(download_count=F("download_count") + 1)
+
+    buffer = BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for photo in photos:
+            if photo.original:
+                zf.write(photo.original.path, photo.filename or photo.original.name)
+
+    buffer.seek(0)
+    filename = f"{event.name}_photos.zip"
+    response = HttpResponse(buffer.read(), content_type="application/zip")
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
+
+
+# ── Utilities ──────────────────────────────────────────────────────────
+
+
+@login_required
+def utilities(request: HttpRequest) -> HttpResponse:
+    """Photographer utilities page."""
+    if not _is_photographer(request.user):
+        return redirect("home")
+
+    from .google_drive import is_drive_configured
+
+    photographer = request.user.photographer_profile
+
+    return render(
+        request,
+        "gallery/utilities.html",
+        {
+            "drive_configured": is_drive_configured(),
+            "photographer": photographer,
+        },
+    )
+
+
+@login_required
+def email_template_edit(request: HttpRequest) -> HttpResponse:
+    """Edit the default email template for customer download emails."""
+    from django.contrib import messages
+
+    if not _is_photographer(request.user):
+        return redirect("home")
+
+    photographer = request.user.photographer_profile
+
+    if request.method == "POST":
+        photographer.email_subject_template = request.POST.get(
+            "email_subject_template", ""
+        ).strip()
+        photographer.email_body_template = request.POST.get(
+            "email_body_template", ""
+        ).strip()
+        photographer.save(
+            update_fields=[
+                "email_subject_template",
+                "email_body_template",
+                "date_modified",
+            ]
+        )
+        messages.success(request, "Email template updated.")
+        return redirect("utilities")
+
+    return redirect("utilities")
+
+
+@login_required
+@require_POST
+def backup_database(request: HttpRequest) -> HttpResponse:
+    """Back up the SQLite database.
+
+    If Google Drive is configured, uploads the backup there.
+    Otherwise, serves it as a local file download.
+    """
+    import shutil
+    import tempfile
+
+    from django.contrib import messages
+
+    if not _is_photographer(request.user):
+        return redirect("home")
+
+    db_path = settings.DATABASES["default"]["NAME"]
+    if not db_path or not Path(db_path).exists():
+        messages.error(request, "Database file not found.")
+        return redirect("utilities")
+
+    timestamp = timezone.now().strftime("%Y%m%d_%H%M%S")
+    backup_filename = f"jasonstudio_backup_{timestamp}.sqlite3"
+
+    # Copy the database safely (SQLite supports this while the DB is open)
+    tmp_dir = tempfile.mkdtemp()
+    backup_path = Path(tmp_dir) / backup_filename
+    shutil.copy2(str(db_path), str(backup_path))
+
+    destination = request.POST.get("destination", "drive")
+
+    if destination == "drive":
+        from .google_drive import is_drive_configured, upload_to_drive
+
+        if not is_drive_configured():
+            messages.error(request, "Google Drive is not configured.")
+            return redirect("utilities")
+
+        try:
+            drive_url = upload_to_drive(
+                str(backup_path),
+                backup_filename,
+                mime_type="application/x-sqlite3",
+            )
+            messages.success(
+                request,
+                f"Database backed up to Google Drive: {drive_url}",
+            )
+        except Exception as e:
+            messages.error(request, f"Google Drive upload failed: {e}")
+        finally:
+            backup_path.unlink(missing_ok=True)
+            Path(tmp_dir).rmdir()
+
+        return redirect("utilities")
+
+    else:
+        # Local download
+        response = HttpResponse(
+            backup_path.read_bytes(),
+            content_type="application/x-sqlite3",
+        )
+        response["Content-Disposition"] = f'attachment; filename="{backup_filename}"'
+        backup_path.unlink(missing_ok=True)
+        Path(tmp_dir).rmdir()
+        return response

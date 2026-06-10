@@ -3,7 +3,7 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-start mb-4 flex-wrap gap-2">
     <h2 class="mb-0">Quotation for {{ customer.user.get_full_name|default:customer.user.username }}</h2>
-    <a href="{% url 'event_orders' event.pk %}" class="btn btn-outline-secondary btn-sm">Back to Orders</a>
+    <a href="{% url 'event_orders' event.pk %}" class="btn btn-outline-secondary btn-sm">Back to Quotes &amp; Orders</a>
 </div>
 
 <div class="row mb-3">
@@ -28,10 +28,10 @@
         <div class="card-body">
             <div class="row">
                 <div class="col-md-4 mb-3">
-                    <label for="id_deposit" class="form-label">Deposit ($)</label>
-                    <input type="number" name="deposit_amount" id="id_deposit"
-                           value="{{ quotation.deposit_amount|floatformat:2 }}"
-                           step="0.01" min="0" class="form-control">
+                    <label for="id_date" class="form-label">Date</label>
+                    <input type="date" name="date" id="id_date"
+                           value="{{ quotation.date|date:'Y-m-d' }}"
+                           class="form-control" required>
                 </div>
                 <div class="col-md-4 mb-3">
                     <label for="id_valid_until" class="form-label">Valid Until</label>
@@ -74,28 +74,32 @@
 
             <div id="lineItemsContainer">
                 {% for item in line_items %}
-                <div class="row g-2 mb-2 line-item-row" data-index="{{ forloop.counter0 }}">
+                <div class="row g-2 mb-3 line-item-row" data-index="{{ forloop.counter0 }}">
                     <input type="hidden" name="item_{{ forloop.counter0 }}_service" value="{{ item.service_id|default_if_none:'' }}">
                     <div class="col-md-4">
+                        <label class="form-label small text-muted mb-0">Description</label>
                         <input type="text" name="item_{{ forloop.counter0 }}_description"
                                value="{{ item.description }}" class="form-control form-control-sm"
                                placeholder="Description" required>
                     </div>
                     <div class="col-md-2">
+                        <label class="form-label small text-muted mb-0">Qty</label>
                         <input type="number" name="item_{{ forloop.counter0 }}_qty"
                                value="{{ item.qty }}" step="0.01" min="0"
                                class="form-control form-control-sm item-qty" placeholder="Qty">
                     </div>
                     <div class="col-md-2">
+                        <label class="form-label small text-muted mb-0">Unit Cost</label>
                         <input type="number" name="item_{{ forloop.counter0 }}_unit_cost"
                                value="{{ item.unit_cost }}" step="0.01" min="0"
                                class="form-control form-control-sm item-unit-cost" placeholder="Unit Cost">
                     </div>
                     <div class="col-md-2">
+                        <label class="form-label small text-muted mb-0">Price</label>
                         <input type="text" class="form-control form-control-sm item-price" readonly
                                value="${{ item.price|floatformat:2 }}">
                     </div>
-                    <div class="col-md-2">
+                    <div class="col-md-2 d-flex align-items-end">
                         <button type="button" class="btn btn-sm btn-outline-danger remove-line-item">
                             <i class="fa-solid fa-trash"></i>
                         </button>
@@ -104,6 +108,41 @@
                 {% empty %}
                 <p class="text-muted small" id="noItemsMsg">No line items yet. Add from the catalog or click "Add Item".</p>
                 {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header"><strong>Summary</strong></div>
+        <div class="card-body">
+            <div class="row justify-content-end">
+                <div class="col-md-6">
+                    <table class="table table-sm mb-0">
+                        <tbody>
+                            <tr>
+                                <td class="text-end border-0">Subtotal</td>
+                                <td class="text-end border-0" id="summarySubtotal">$0.00</td>
+                            </tr>
+                            <tr>
+                                <td class="text-end border-0">
+                                    <label for="id_deposit" class="form-label mb-0">Deposit Required</label>
+                                </td>
+                                <td class="text-end border-0" style="width: 160px;">
+                                    <div class="input-group input-group-sm">
+                                        <span class="input-group-text">$</span>
+                                        <input type="number" name="deposit_amount" id="id_deposit"
+                                               value="{{ quotation.deposit_amount|floatformat:2 }}"
+                                               step="0.01" min="0" class="form-control form-control-sm text-end">
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr class="fw-bold">
+                                <td class="text-end">Balance Due</td>
+                                <td class="text-end" id="summaryBalance">$0.00</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
@@ -126,30 +165,35 @@ function addLineItem(description, rate, serviceId) {
 
     const container = document.getElementById('lineItemsContainer');
     const row = document.createElement('div');
-    row.className = 'row g-2 mb-2 line-item-row';
+    row.className = 'row g-2 mb-3 line-item-row';
     row.dataset.index = lineIndex;
+    const safeDesc = (description || '').replace(/"/g, '&quot;');
     row.innerHTML = `
         <input type="hidden" name="item_${lineIndex}_service" value="${serviceId || ''}">
         <div class="col-md-4">
+            <label class="form-label small text-muted mb-0">Description</label>
             <input type="text" name="item_${lineIndex}_description"
-                   value="${description || ''}" class="form-control form-control-sm"
+                   value="${safeDesc}" class="form-control form-control-sm"
                    placeholder="Description" required>
         </div>
         <div class="col-md-2">
+            <label class="form-label small text-muted mb-0">Qty</label>
             <input type="number" name="item_${lineIndex}_qty"
                    value="1" step="0.01" min="0"
                    class="form-control form-control-sm item-qty" placeholder="Qty">
         </div>
         <div class="col-md-2">
+            <label class="form-label small text-muted mb-0">Unit Cost</label>
             <input type="number" name="item_${lineIndex}_unit_cost"
                    value="${rate || '0'}" step="0.01" min="0"
                    class="form-control form-control-sm item-unit-cost" placeholder="Unit Cost">
         </div>
         <div class="col-md-2">
+            <label class="form-label small text-muted mb-0">Price</label>
             <input type="text" class="form-control form-control-sm item-price" readonly
                    value="$${(parseFloat(rate || 0)).toFixed(2)}">
         </div>
-        <div class="col-md-2">
+        <div class="col-md-2 d-flex align-items-end">
             <button type="button" class="btn btn-sm btn-outline-danger remove-line-item">
                 <i class="fa-solid fa-trash"></i>
             </button>
@@ -179,15 +223,37 @@ document.addEventListener('input', e => {
     if (e.target.classList.contains('item-qty') || e.target.classList.contains('item-unit-cost')) {
         updatePrices();
     }
+    if (e.target.id === 'id_deposit') {
+        updateSummary();
+    }
 });
 
 function updatePrices() {
+    let subtotal = 0;
     document.querySelectorAll('.line-item-row').forEach(row => {
         const qty = parseFloat(row.querySelector('.item-qty')?.value || 0);
         const cost = parseFloat(row.querySelector('.item-unit-cost')?.value || 0);
+        const lineTotal = qty * cost;
+        subtotal += lineTotal;
         const priceField = row.querySelector('.item-price');
-        if (priceField) priceField.value = '$' + (qty * cost).toFixed(2);
+        if (priceField) priceField.value = '$' + lineTotal.toFixed(2);
     });
+    updateSummary(subtotal);
+}
+
+function updateSummary(subtotal) {
+    if (subtotal === undefined) {
+        subtotal = 0;
+        document.querySelectorAll('.line-item-row').forEach(row => {
+            const qty = parseFloat(row.querySelector('.item-qty')?.value || 0);
+            const cost = parseFloat(row.querySelector('.item-unit-cost')?.value || 0);
+            subtotal += qty * cost;
+        });
+    }
+    const deposit = parseFloat(document.getElementById('id_deposit')?.value || 0);
+    const balance = subtotal - deposit;
+    document.getElementById('summarySubtotal').textContent = '$' + subtotal.toFixed(2);
+    document.getElementById('summaryBalance').textContent = '$' + balance.toFixed(2);
 }
 
 function reindexItems() {
@@ -199,5 +265,8 @@ function reindexItems() {
     });
     lineIndex = document.querySelectorAll('.line-item-row').length;
 }
+
+// Initial summary calculation on page load
+updateSummary();
 </script>
 {% endblock %}

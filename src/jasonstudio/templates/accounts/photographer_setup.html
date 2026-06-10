@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Photographer Setup — Jason Studio{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <h2 class="mb-4">Set Up Photographer Profile</h2>
+        <p class="text-muted mb-4">Create your photographer profile to start managing events, customers, and invoices.</p>
+
+        <form method="post">
+            {% csrf_token %}
+
+            <div class="card mb-4">
+                <div class="card-header">Business Details</div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label for="id_business_name" class="form-label">Business Name</label>
+                        <input type="text" name="business_name" id="id_business_name"
+                               value="{{ form.business_name.value|default_if_none:'' }}"
+                               class="form-control {% if form.business_name.errors %}is-invalid{% endif %}"
+                               required>
+                        {% if form.business_name.errors %}<div class="invalid-feedback">{{ form.business_name.errors.0 }}</div>{% endif %}
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="id_phone" class="form-label">Phone</label>
+                            <input type="text" name="phone" id="id_phone"
+                                   value="{{ form.phone.value|default_if_none:'' }}"
+                                   class="form-control">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="id_email" class="form-label">Email</label>
+                            <input type="email" name="email" id="id_email"
+                                   value="{{ form.email.value|default_if_none:'' }}"
+                                   class="form-control">
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="id_address" class="form-label">Business Address</label>
+                        <textarea name="address" id="id_address" rows="3"
+                                  class="form-control">{{ form.address.value|default_if_none:'' }}</textarea>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card mb-4">
+                <div class="card-header">Invoice Settings</div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label for="id_payment_instructions" class="form-label">Payment Instructions</label>
+                        <textarea name="payment_instructions" id="id_payment_instructions" rows="3"
+                                  class="form-control">{{ form.payment_instructions.value|default_if_none:'' }}</textarea>
+                        <div class="form-text">Payment details shown on invoices (bank, Venmo, etc.).</div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="id_payment_terms" class="form-label">Payment Terms</label>
+                            <input type="text" name="payment_terms" id="id_payment_terms"
+                                   value="{{ form.payment_terms.value|default_if_none:'Due within 30 days' }}"
+                                   class="form-control">
+                            <div class="form-text">e.g. "Due within 30 days", "Due on receipt".</div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="id_tax_rate" class="form-label">Tax Rate (%)</label>
+                            <input type="number" name="tax_rate" id="id_tax_rate" step="0.01"
+                                   value="{{ form.tax_rate.value|default_if_none:'0' }}"
+                                   class="form-control">
+                            <div class="form-text">e.g. 13.00 for 13%.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-lg w-100">Create Profile</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

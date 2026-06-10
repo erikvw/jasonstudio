@@ -16,6 +16,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "django_htmx",
+    "simple_history",
     "jasonstudio.accounts",
     "jasonstudio.gallery",
 ]
@@ -29,6 +30,7 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "django_htmx.middleware.HtmxMiddleware",
+    "simple_history.middleware.HistoryRequestMiddleware",
 ]
 
 ROOT_URLCONF = "jasonstudio.urls"
@@ -78,3 +80,13 @@ LOGIN_URL = "/accounts/login/"
 
 WATERMARK_TEXT = "PROOF"
 WATERMARK_OPACITY = 75
+
+# Google Drive integration (for sharing download zips with customers)
+# See docs/google_drive_setup.md for setup instructions.
+# OAuth2 (personal Gmail) — set CLIENT_SECRETS_FILE
+GOOGLE_DRIVE_CLIENT_SECRETS_FILE = env("GOOGLE_DRIVE_CLIENT_SECRETS_FILE", default="")
+GOOGLE_DRIVE_TOKEN_FILE = env("GOOGLE_DRIVE_TOKEN_FILE", default="")
+# Service account (Google Workspace + Shared Drives) — set CREDENTIALS_FILE
+GOOGLE_DRIVE_CREDENTIALS_FILE = env("GOOGLE_DRIVE_CREDENTIALS_FILE", default="")
+# Required for both modes
+GOOGLE_DRIVE_FOLDER_ID = env("GOOGLE_DRIVE_FOLDER_ID", default="")

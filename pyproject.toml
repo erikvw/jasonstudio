@@ -1,6 +1,6 @@
 [project]
 name = "jasonstudio"
-version = "0.1.2"
+version = "0.2.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.14"
@@ -9,7 +9,11 @@ dependencies = [
     "django-environ>=0.13.0",
     "django-fernet-encrypted-fields>=0.4.0",
     "django-htmx>=1.27.0",
+    "django-simple-history>=3.11.0",
     "django-storages>=1.14.6",
+    "google-api-python-client>=2.197.0",
+    "google-auth>=2.53.0",
+    "google-auth-oauthlib>=1.2.0",
     "pillow>=12.2.0",
     "psycopg>=3.3.4",
 ]

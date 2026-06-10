@@ -16,3 +16,5 @@ DATABASES = {
 }
 
 STATICFILES_DIRS = [PACKAGE_DIR / "static"]
+
+EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"

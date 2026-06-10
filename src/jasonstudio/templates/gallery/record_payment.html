@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Record Payment — {{ invoice.invoice_number }} — Jason Studio{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+        <h2 class="mb-1">Record Payment</h2>
+        <p class="text-muted mb-0">{{ event.name }} — {{ customer.user.get_full_name|default:customer.user.username }}</p>
+    </div>
+    <a href="{% url 'event_orders' event.pk %}" class="btn btn-outline-secondary btn-sm">Back to Quotes &amp; Orders</a>
+</div>
+
+<!-- Invoice summary -->
+<div class="card mb-4">
+    <div class="card-header"><strong>Invoice {{ invoice.invoice_number }}</strong></div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-sm-6">
+                <p class="mb-1"><strong>Order:</strong> {{ order.ref }}</p>
+                <p class="mb-1"><strong>Invoice Date:</strong> {{ invoice.date|date:"N j, Y" }}</p>
+            </div>
+            <div class="col-sm-6 text-sm-end">
+                <p class="mb-1"><strong>Subtotal:</strong> ${{ invoice.subtotal|floatformat:2 }}</p>
+                {% if invoice.deposit and invoice.deposit != 0 %}
+                <p class="mb-1"><strong>Deposit:</strong> -${{ invoice.deposit|floatformat:2 }}</p>
+                {% endif %}
+                {% if invoice.tax_amount and invoice.tax_amount != 0 %}
+                <p class="mb-1"><strong>Tax:</strong> ${{ invoice.tax_amount|floatformat:2 }}</p>
+                {% endif %}
+                <p class="mb-0 fs-5"><strong>Amount Due: ${{ invoice.amount_due|floatformat:2 }}</strong></p>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% endif %}
+
+<!-- Payment form -->
+<div class="card">
+    <div class="card-header"><strong>Payment Details</strong></div>
+    <div class="card-body">
+        <form method="post">
+            {% csrf_token %}
+            <div class="row mb-3">
+                <div class="col-sm-6">
+                    <label for="date" class="form-label">Payment Date</label>
+                    <input type="date" name="date" id="date" class="form-control"
+                           value="{% now 'Y-m-d' %}">
+                </div>
+                <div class="col-sm-6">
+                    <label for="amount" class="form-label">Amount</label>
+                    <div class="input-group">
+                        <span class="input-group-text">$</span>
+                        <input type="number" name="amount" id="amount" class="form-control"
+                               step="0.01" min="0.01" value="{{ invoice.amount_due|floatformat:2 }}">
+                    </div>
+                </div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-sm-6">
+                    <label for="method" class="form-label">Payment Method</label>
+                    <select name="method" id="method" class="form-select">
+                        {% for value, label in payment_methods %}
+                        <option value="{{ value }}" {% if value == "etransfer" %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-sm-6">
+                    <label for="reference" class="form-label">Reference / Transaction ID</label>
+                    <input type="text" name="reference" id="reference" class="form-control"
+                           placeholder="e.g. cheque number, e-transfer confirmation">
+                </div>
+            </div>
+            <div class="mb-3">
+                <label for="notes" class="form-label">Notes</label>
+                <textarea name="notes" id="notes" rows="2" class="form-control"
+                          placeholder="Optional notes about this payment"></textarea>
+            </div>
+            <button type="submit" class="btn btn-success">Record Payment</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

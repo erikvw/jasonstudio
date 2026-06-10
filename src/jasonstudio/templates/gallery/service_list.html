@@ -33,6 +33,9 @@
                     {% else %}
                     <span class="badge bg-secondary">Inactive</span>
                     {% endif %}
+                    {% if service.is_default %}
+                    <span class="badge bg-info">Default</span>
+                    {% endif %}
                 </td>
                 <td>
                     <a href="{% url 'service_edit' service.pk %}" class="btn btn-sm btn-outline-dark">Edit</a>

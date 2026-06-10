@@ -12,23 +12,21 @@
             {% csrf_token %}
 
             <div class="card mb-4">
-                <div class="card-header"><strong>Customers</strong></div>
+                <div class="card-header"><strong>Customer</strong></div>
                 <div class="card-body">
-                    <p class="text-muted small">Select the customers who should have access to this event's gallery.</p>
-                    <div class="row">
+                    <p class="text-muted small">The primary customer for this event.</p>
+                    <select name="primary_customer" id="id_primary_customer" class="form-select">
+                        <option value="">— Select a customer —</option>
                         {% for checkbox in form.customers %}
-                        <div class="col-md-6 col-lg-4">
-                            <div class="form-check mb-2">
-                                {{ checkbox.tag }}
-                                <label class="form-check-label" for="{{ checkbox.id_for_label }}">
-                                    {{ checkbox.choice_label }}
-                                </label>
-                            </div>
-                        </div>
-                        {% empty %}
-                        <p class="text-muted">No customers yet. Add customers in the Admin.</p>
+                        <option value="{{ checkbox.data.value }}"
+                                {% if checkbox.data.value|stringformat:"s" == primary_customer_id %}selected{% endif %}>
+                            {{ checkbox.choice_label }}
+                        </option>
                         {% endfor %}
-                    </div>
+                    </select>
+                    {% if not form.customers %}
+                    <p class="text-muted mt-2 mb-0">No customers yet. <a href="{% url 'customer_add' %}">Add a customer</a> first.</p>
+                    {% endif %}
                 </div>
             </div>
 
@@ -78,6 +76,28 @@
                 </div>
             </div>
 
+            <div class="card mb-4">
+                <div class="card-header"><strong>Friends</strong></div>
+                <div class="card-body">
+                    <p class="text-muted small">Additional customers who can view and select from this gallery.</p>
+                    <input type="text" id="friend-search" class="form-control form-control-sm mb-2"
+                           placeholder="Search customers...">
+                    <div id="friend-list" style="max-height: 200px; overflow-y: auto;">
+                        {% for checkbox in form.customers %}
+                        <div class="form-check friend-item mb-1" data-name="{{ checkbox.choice_label|lower }}">
+                            <input type="checkbox" name="friends" value="{{ checkbox.data.value }}"
+                                   id="friend_{{ checkbox.data.value }}"
+                                   class="form-check-input"
+                                   {% if checkbox.data.value|stringformat:"s" in friend_ids %}checked{% endif %}>
+                            <label class="form-check-label" for="friend_{{ checkbox.data.value }}">
+                                {{ checkbox.choice_label }}
+                            </label>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
             <div class="d-flex gap-2">
                 <button type="submit" class="btn btn-primary">Save</button>
                 <a href="{% url 'photographer_dashboard' %}" class="btn btn-outline-secondary">Cancel</a>
@@ -86,3 +106,19 @@
     </div>
 </div>
 {% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    const search = document.getElementById("friend-search");
+    if (search) {
+        search.addEventListener("input", function() {
+            const q = this.value.toLowerCase();
+            document.querySelectorAll(".friend-item").forEach(function(item) {
+                item.style.display = item.dataset.name.includes(q) ? "" : "none";
+            });
+        });
+    }
+});
+</script>
+{% endblock extra_js %}

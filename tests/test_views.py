@@ -6,7 +6,7 @@ from django.test import Client
 from django.urls import reverse
 from django.utils import timezone
 
-from jasonstudio.accounts.models import Invoice
+from jasonstudio.accounts.models import Invoice, Payment
 from jasonstudio.gallery.models import (
     Event,
     Selection,
@@ -163,11 +163,13 @@ class TestSelectionInvoiceView:
         Selection.objects.create(photo=photo, customer=customer, choice="digital")
         customer_client.get(reverse("selection_invoice", args=[event_with_customer.pk]))
         invoice = Invoice.objects.get(order=order)
-        # photographer_hours=2, rate=150 → subtotal=300
+        # quotation line item: 2 × $150 = $300
         assert invoice.subtotal == Decimal("300.00")
         # tax_rate=13% → tax=39
         assert invoice.tax_amount == Decimal("39.00")
-        assert invoice.amount_due == Decimal("339.00")
+        # subtotal(300) - deposit(100) + tax(39) = 239
+        assert invoice.deposit == Decimal("100.00")
+        assert invoice.amount_due == Decimal("239.00")
 
     def test_no_order_redirects(self, customer_client, event_with_customer):
         resp = customer_client.get(
@@ -197,10 +199,13 @@ class TestCustomerDownloadView:
         assert resp.status_code in (302, 403, 404)
 
     def test_download_blocked_when_expired(
-        self, customer_client, event_with_customer, paid_order
+        self, customer_client, event_with_customer, paid_order, invoice
     ):
-        paid_order.paid_at = timezone.now() - datetime.timedelta(days=31)
-        paid_order.save()
+        # Move payment date_created back 31 days to expire downloads
+        payment = invoice.payments.first()
+        Payment.objects.filter(pk=payment.pk).update(
+            date_created=timezone.now() - datetime.timedelta(days=31)
+        )
         resp = customer_client.get(
             reverse("customer_download", args=[event_with_customer.pk])
         )

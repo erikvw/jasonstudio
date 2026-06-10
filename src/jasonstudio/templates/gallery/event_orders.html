@@ -34,16 +34,17 @@
                 <span class="badge bg-secondary">Expired</span>
                 {% endif %}
             {% endif %}
-            <!-- Order status -->
+            <!-- Order/Payment status -->
             {% if row.order %}
-                {% if row.order.status == 'pending_payment' %}
-                <span class="badge bg-warning text-dark">Order: Pending</span>
-                {% elif row.order.status == 'paid' %}
-                <span class="badge bg-success">Order: Paid</span>
-                {% elif row.order.status == 'in_progress' %}
-                <span class="badge bg-primary">Order: In Progress</span>
-                {% elif row.order.status == 'delivered' %}
-                <span class="badge bg-dark">Order: Delivered</span>
+                {% if row.order.is_paid %}
+                <span class="badge bg-success">Paid</span>
+                {% else %}
+                <span class="badge bg-warning text-dark">Unpaid</span>
+                {% endif %}
+                {% if row.order.status == 'delivered' %}
+                <span class="badge bg-dark">Delivered</span>
+                {% elif row.order.status == 'partially_delivered' %}
+                <span class="badge bg-info">Partial</span>
                 {% endif %}
             {% endif %}
             <!-- Selections -->
@@ -53,19 +54,34 @@
             {% endif %}
         </div>
         <div class="d-flex flex-wrap gap-1">
-            <a href="{% url 'quotation_edit' event.pk row.customer.pk %}"
-               class="btn btn-sm btn-outline-warning">
-                {% if row.quotation %}Quote{% else %}New Quote{% endif %}
-            </a>
-            {% if row.quotation %}
-            <a href="{% url 'quotation_view' event.pk row.customer.pk %}"
-               class="btn btn-sm btn-outline-secondary">View Quote</a>
-            {% endif %}
-            {% if row.order %}
-            <a href="{% url 'customer_order_detail' event.pk row.customer.pk %}"
-               class="btn btn-sm btn-outline-primary">Order</a>
-            <a href="{% url 'photographer_invoice' event.pk row.customer.pk %}"
-               class="btn btn-sm btn-outline-dark">Invoice</a>
+            {% if not row.quotation %}
+                <a href="{% url 'quotation_edit' event.pk row.customer.pk %}"
+                   class="btn btn-sm btn-outline-warning">New Quote</a>
+            {% elif not row.order %}
+                <a href="{% url 'quotation_edit' event.pk row.customer.pk %}"
+                   class="btn btn-sm btn-outline-warning">Edit Quote</a>
+                {% if row.quotation.status == 'draft' or row.quotation.status == 'sent' %}
+                <form method="post" action="{% url 'quotation_accept' event.pk row.customer.pk %}" class="d-inline">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm btn-outline-success">Add Order</button>
+                </form>
+                {% endif %}
+            {% else %}
+                <a href="{% url 'quotation_view' event.pk row.customer.pk %}"
+                   class="btn btn-sm btn-outline-secondary">View Quote</a>
+                <a href="{% url 'customer_order_detail' event.pk row.customer.pk %}"
+                   class="btn btn-sm btn-outline-primary">Order</a>
+                <a href="{% url 'photographer_invoice' event.pk row.customer.pk %}"
+                   class="btn btn-sm btn-outline-dark">Invoice</a>
+                <a href="{% url 'order_fulfilment' event.pk row.customer.pk %}"
+                   class="btn btn-sm {% if row.order.status == 'delivered' %}btn-outline-dark{% elif row.order.status == 'partially_delivered' %}btn-outline-info{% elif row.order.is_paid %}btn-outline-success{% else %}btn-outline-warning{% endif %}">
+                    Fulfilment
+                    {% if row.order.status == 'delivered' %}<span class="badge bg-dark ms-1">Delivered</span>
+                    {% elif row.order.status == 'partially_delivered' %}<span class="badge bg-info ms-1">Partial</span>
+                    {% elif row.order.is_paid %}<span class="badge bg-success ms-1">Paid</span>
+                    {% else %}<span class="badge bg-warning text-dark ms-1">Unpaid</span>
+                    {% endif %}
+                </a>
             {% endif %}
         </div>
     </div>
@@ -110,13 +126,12 @@
                 </td>
                 <td>
                     {% if row.order %}
-                        {% if row.order.status == 'pending_payment' %}
-                        <span class="badge bg-warning text-dark">Pending Payment</span>
-                        {% elif row.order.status == 'paid' %}
+                        {% if row.order.is_paid %}
                         <span class="badge bg-success">Paid</span>
-                        {% elif row.order.status == 'in_progress' %}
-                        <span class="badge bg-primary">In Progress</span>
-                        {% elif row.order.status == 'delivered' %}
+                        {% else %}
+                        <span class="badge bg-warning text-dark">Unpaid</span>
+                        {% endif %}
+                        {% if row.order.status == 'delivered' %}
                         <span class="badge bg-dark">Delivered</span>
                         {% endif %}
                     {% else %}
@@ -133,19 +148,33 @@
                 </td>
                 <td class="text-end text-nowrap">
                     <div class="d-flex gap-1 justify-content-end">
-                        <a href="{% url 'quotation_edit' event.pk row.customer.pk %}"
-                           class="btn btn-sm btn-outline-warning">
-                            {% if row.quotation %}Quote{% else %}New Quote{% endif %}
-                        </a>
-                        {% if row.quotation %}
-                        <a href="{% url 'quotation_view' event.pk row.customer.pk %}"
-                           class="btn btn-sm btn-outline-secondary">View Quote</a>
-                        {% endif %}
-                        {% if row.order %}
-                        <a href="{% url 'customer_order_detail' event.pk row.customer.pk %}"
-                           class="btn btn-sm btn-outline-primary">Order</a>
-                        <a href="{% url 'photographer_invoice' event.pk row.customer.pk %}"
-                           class="btn btn-sm btn-outline-dark">Invoice</a>
+                        {% if not row.quotation %}
+                            <a href="{% url 'quotation_edit' event.pk row.customer.pk %}"
+                               class="btn btn-sm btn-outline-warning">New Quote</a>
+                        {% elif not row.order %}
+                            <a href="{% url 'quotation_edit' event.pk row.customer.pk %}"
+                               class="btn btn-sm btn-outline-warning">Edit Quote</a>
+                            {% if row.quotation.status == 'draft' or row.quotation.status == 'sent' %}
+                            <form method="post" action="{% url 'quotation_accept' event.pk row.customer.pk %}" class="d-inline">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-sm btn-outline-success">Add Order</button>
+                            </form>
+                            {% endif %}
+                        {% else %}
+                            <a href="{% url 'quotation_view' event.pk row.customer.pk %}"
+                               class="btn btn-sm btn-outline-secondary">View Quote</a>
+                            <a href="{% url 'customer_order_detail' event.pk row.customer.pk %}"
+                               class="btn btn-sm btn-outline-primary">Order</a>
+                            <a href="{% url 'photographer_invoice' event.pk row.customer.pk %}"
+                               class="btn btn-sm btn-outline-dark">Invoice</a>
+                            <a href="{% url 'order_fulfilment' event.pk row.customer.pk %}"
+                               class="btn btn-sm {% if row.order.status == 'delivered' %}btn-outline-dark{% elif row.order.is_paid %}btn-outline-success{% else %}btn-outline-warning{% endif %}">
+                                Fulfilment
+                                {% if row.order.status == 'delivered' %}<span class="badge bg-dark ms-1">Delivered</span>
+                                {% elif row.order.is_paid %}<span class="badge bg-success ms-1">Paid</span>
+                                {% else %}<span class="badge bg-warning text-dark ms-1">Unpaid</span>
+                                {% endif %}
+                            </a>
                         {% endif %}
                     </div>
                 </td>

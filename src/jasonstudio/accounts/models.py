@@ -1,6 +1,9 @@
+import secrets
 import uuid
+from datetime import timedelta
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 from encrypted_fields.fields import (
@@ -8,9 +11,44 @@ from encrypted_fields.fields import (
     EncryptedEmailField,
     EncryptedTextField,
 )
+from simple_history.models import HistoricalRecords
 
 
-class Customer(models.Model):
+# ---------------------------------------------------------------------------
+# Audit mixin — date_created, date_modified, user_created, user_modified
+# ---------------------------------------------------------------------------
+
+
+class AuditFieldsMixin(models.Model):
+    """Non-editable audit fields on every document."""
+
+    date_created = models.DateTimeField(auto_now_add=True)
+    date_modified = models.DateTimeField(auto_now=True)
+    user_created = models.CharField(
+        max_length=150,
+        blank=True,
+        default="",
+        editable=False,
+        help_text="Username of the user who created this record.",
+    )
+    user_modified = models.CharField(
+        max_length=150,
+        blank=True,
+        default="",
+        editable=False,
+        help_text="Username of the user who last modified this record.",
+    )
+
+    class Meta:
+        abstract = True
+
+
+# ---------------------------------------------------------------------------
+# Customer and PhotographerProfile
+# ---------------------------------------------------------------------------
+
+
+class Customer(AuditFieldsMixin):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
@@ -21,8 +59,6 @@ class Customer(models.Model):
     phone = EncryptedCharField(max_length=20, blank=True, null=True, default="")
     is_active = models.BooleanField(default=True)
     notes = models.TextField(blank=True, default="")
-    created = models.DateTimeField(auto_now_add=True)
-    modified = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["user__last_name", "user__first_name"]
@@ -31,7 +67,7 @@ class Customer(models.Model):
         return f"{self.user.get_full_name() or self.user.username}"
 
 
-class PhotographerProfile(models.Model):
+class PhotographerProfile(AuditFieldsMixin):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
@@ -67,19 +103,41 @@ class PhotographerProfile(models.Model):
         default="",
         help_text="Default terms/notes shown at the bottom of invoices.",
     )
-    created = models.DateTimeField(auto_now_add=True)
-    modified = models.DateTimeField(auto_now=True)
+    email_subject_template = models.CharField(
+        max_length=200,
+        blank=True,
+        default='Your photos from "{event_name}" are ready',
+        help_text=(
+            "Subject line for download emails. "
+            "Placeholders: {customer_name}, {event_name}, {photographer_name}"
+        ),
+    )
+    email_body_template = models.TextField(
+        blank=True,
+        default=(
+            "Hi {customer_name},\n\n"
+            'Your photos from "{event_name}" are ready for download.\n\n'
+            "Click the link below to download your photos:\n\n"
+            "{download_url}\n\n"
+            "Thank you for choosing {photographer_name}."
+        ),
+        help_text=(
+            "Body for download emails. "
+            "Placeholders: {customer_name}, {event_name}, "
+            "{photographer_name}, {download_url}"
+        ),
+    )
 
     def __str__(self) -> str:
         return self.business_name or str(self.user)
 
 
 # ---------------------------------------------------------------------------
-# Quotation, Order, Invoice, and Payment models
+# Quotation → Order → Invoice → Payment
 # ---------------------------------------------------------------------------
 
 
-class Quotation(models.Model):
+class Quotation(AuditFieldsMixin):
     class Status(models.TextChoices):
         DRAFT = "draft", "Draft"
         SENT = "sent", "Sent"
@@ -103,6 +161,9 @@ class Quotation(models.Model):
         Customer,
         on_delete=models.CASCADE,
         related_name="quotations",
+    )
+    date = models.DateField(
+        help_text="Date of the quotation.",
     )
     status = models.CharField(
         max_length=20,
@@ -132,20 +193,24 @@ class Quotation(models.Model):
         default="",
         help_text="Who accepted: 'customer' or 'photographer'.",
     )
-    created = models.DateTimeField(auto_now_add=True)
-    modified = models.DateTimeField(auto_now=True)
+
+    history = HistoricalRecords()
 
     class Meta:
-        ordering = ["-created"]
+        ordering = ["-date_created"]
         unique_together = [("event", "customer")]
 
     def __str__(self) -> str:
         return f"{self.quote_number} — {self.customer}"
 
     def save(self, *args, **kwargs) -> None:
+        if not self.date:
+            self.date = timezone.now().date()
         if not self.quote_number:
             last = (
-                Quotation.objects.exclude(quote_number="").order_by("-created").first()
+                Quotation.objects.exclude(quote_number="")
+                .order_by("-date_created")
+                .first()
             )
             next_num = 1
             if last and last.quote_number:
@@ -164,46 +229,26 @@ class Quotation(models.Model):
 
     def accept(self, by: str = "customer") -> "Order":
         """Accept the quotation and create an Order from it."""
-        from jasonstudio.gallery.models import Service
-
         self.status = self.Status.ACCEPTED
         self.accepted_at = timezone.now()
         self.accepted_by = by
-        self.save(update_fields=["status", "accepted_at", "accepted_by", "modified"])
-
-        # Determine photographer hours/rate from line items
-        from decimal import Decimal
-
-        photography_item = self.line_items.filter(
-            service__unit_type=Service.UnitType.PER_HOUR,
-        ).first()
-        hours = photography_item.qty if photography_item else Decimal("0")
-        rate = photography_item.unit_cost if photography_item else Decimal("0")
+        self.save(
+            update_fields=[
+                "status",
+                "accepted_at",
+                "accepted_by",
+                "date_modified",
+            ]
+        )
 
         order, _created = Order.objects.get_or_create(
             event=self.event,
             customer=self.customer,
-            defaults={
-                "quotation": self,
-                "photographer_hours": hours,
-                "photographer_rate": rate,
-                "deposit_amount": self.deposit_amount,
-            },
+            defaults={"quotation": self, "date": timezone.now().date()},
         )
         if not _created:
             order.quotation = self
-            order.photographer_hours = hours
-            order.photographer_rate = rate
-            order.deposit_amount = self.deposit_amount
-            order.save(
-                update_fields=[
-                    "quotation",
-                    "photographer_hours",
-                    "photographer_rate",
-                    "deposit_amount",
-                    "modified",
-                ]
-            )
+            order.save(update_fields=["quotation", "date_modified"])
         return order
 
 
@@ -234,11 +279,10 @@ class QuotationLineItem(models.Model):
         return self.description
 
 
-class Order(models.Model):
+class Order(AuditFieldsMixin):
     class Status(models.TextChoices):
-        PENDING_PAYMENT = "pending_payment", "Pending Payment"
-        PAID = "paid", "Paid"
         IN_PROGRESS = "in_progress", "In Progress"
+        PARTIALLY_DELIVERED = "partially_delivered", "Partially Delivered"
         DELIVERED = "delivered", "Delivered"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -250,9 +294,7 @@ class Order(models.Model):
     )
     quotation = models.OneToOneField(
         Quotation,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
+        on_delete=models.PROTECT,
         related_name="order",
     )
     event = models.ForeignKey(
@@ -265,49 +307,45 @@ class Order(models.Model):
         on_delete=models.CASCADE,
         related_name="orders",
     )
+    date = models.DateField(
+        help_text="Date of the order.",
+    )
     status = models.CharField(
         max_length=20,
         choices=Status.choices,
-        default=Status.PENDING_PAYMENT,
-    )
-    photographer_hours = models.DecimalField(
-        max_digits=5,
-        decimal_places=2,
-        default=0,
-        help_text="Hours of photography for this order.",
-    )
-    photographer_rate = models.DecimalField(
-        max_digits=7,
-        decimal_places=2,
-        default=0,
-        help_text="Hourly rate for photography.",
-    )
-    deposit_amount = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        default=0,
-        help_text="Deposit requested before the shoot.",
+        default=Status.IN_PROGRESS,
     )
     download_count = models.PositiveIntegerField(default=0)
-    paid_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        help_text="When payment was received. Download link expires 30 days after this.",
-    )
     notes = models.TextField(blank=True, default="")
-    created = models.DateTimeField(auto_now_add=True)
-    modified = models.DateTimeField(auto_now=True)
+
+    history = HistoricalRecords()
 
     class Meta:
         unique_together = [("event", "customer")]
-        ordering = ["-created"]
+        ordering = ["-date_created"]
 
     def __str__(self) -> str:
         return f"{self.event.name} — {self.customer} ({self.get_status_display()})"
 
+    def clean(self) -> None:
+        super().clean()
+        if self.date and self.quotation_id:
+            quotation_date = self.quotation.date
+            if quotation_date and self.date < quotation_date:
+                raise ValidationError(
+                    {
+                        "date": (
+                            f"Order date ({self.date}) cannot be before "
+                            f"the quotation date ({quotation_date})."
+                        )
+                    }
+                )
+
     def save(self, *args, **kwargs) -> None:
+        if not self.date:
+            self.date = timezone.now().date()
         if not self.ref:
-            last = Order.objects.order_by("-created").first()
+            last = Order.objects.order_by("-date_created").first()
             next_num = 1
             if last and last.ref:
                 try:
@@ -315,23 +353,50 @@ class Order(models.Model):
                 except ValueError:
                     next_num = Order.objects.count() + 1
             self.ref = f"ORD-{next_num:05d}"
-        # Auto-set paid_at when status changes to paid
-        if self.status == self.Status.PAID and not self.paid_at:
-            self.paid_at = timezone.now()
         super().save(*args, **kwargs)
+
+    def update_delivery_status(self) -> None:
+        """Recalculate order status based on deliveries.
+
+        No deliveries → In Progress.
+        Has deliveries but not marked complete → Partially Delivered.
+        Photographer marks complete → Delivered (set directly, not here).
+        """
+        has_deliveries = self.deliveries.exists()
+        if self.status == self.Status.DELIVERED:
+            # Don't downgrade if photographer explicitly marked as delivered
+            return
+        new_status = (
+            self.Status.PARTIALLY_DELIVERED
+            if has_deliveries
+            else self.Status.IN_PROGRESS
+        )
+        if self.status != new_status:
+            self.status = new_status
+            self.save(update_fields=["status", "date_modified"])
 
     @property
     def is_paid(self) -> bool:
-        return self.status in (
-            self.Status.PAID,
-            self.Status.IN_PROGRESS,
-            self.Status.DELIVERED,
-        )
+        """Order is paid when its latest invoice has a payment recorded."""
+        invoice = self.invoices.order_by("-date_created").first()
+        if invoice and invoice.status == Invoice.Status.PAID:
+            return True
+        return False
+
+    @property
+    def paid_at(self) -> timezone.datetime | None:
+        """Return the date/time of the first payment on the latest invoice."""
+        invoice = self.invoices.order_by("-date_created").first()
+        if invoice:
+            payment = invoice.payments.order_by("date_created").first()
+            if payment:
+                return payment.date_created
+        return None
 
     @property
     def download_expires_at(self):
         if self.paid_at:
-            return self.paid_at + timezone.timedelta(days=30)
+            return self.paid_at + timedelta(days=30)
         return None
 
     @property
@@ -339,12 +404,11 @@ class Order(models.Model):
         if not self.is_paid:
             return False
         if not self.paid_at:
-            # Paid but no timestamp recorded (legacy) — allow download
             return True
-        return timezone.now() <= self.paid_at + timezone.timedelta(days=30)
+        return timezone.now() <= self.paid_at + timedelta(days=30)
 
 
-class Invoice(models.Model):
+class Invoice(AuditFieldsMixin):
     class Status(models.TextChoices):
         DRAFT = "draft", "Draft"
         ISSUED = "issued", "Issued"
@@ -359,6 +423,9 @@ class Invoice(models.Model):
         help_text="Auto-generated invoice number.",
     )
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="invoices")
+    date = models.DateField(
+        help_text="Date of the invoice.",
+    )
     status = models.CharField(
         max_length=20,
         choices=Status.choices,
@@ -381,19 +448,37 @@ class Invoice(models.Model):
     tax_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     amount_due = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     notes = models.TextField(blank=True, default="")
-    created = models.DateTimeField(auto_now_add=True)
-    modified = models.DateTimeField(auto_now=True)
+
+    history = HistoricalRecords()
 
     class Meta:
-        ordering = ["-created"]
+        ordering = ["-date_created"]
 
     def __str__(self) -> str:
         return f"{self.invoice_number} — {self.order.ref}"
 
+    def clean(self) -> None:
+        super().clean()
+        if self.date and self.order_id:
+            order_date = self.order.date
+            if order_date and self.date < order_date:
+                raise ValidationError(
+                    {
+                        "date": (
+                            f"Invoice date ({self.date}) cannot be before "
+                            f"the order date ({order_date})."
+                        )
+                    }
+                )
+
     def save(self, *args, **kwargs) -> None:
+        if not self.date:
+            self.date = timezone.now().date()
         if not self.invoice_number:
             last = (
-                Invoice.objects.exclude(invoice_number="").order_by("-created").first()
+                Invoice.objects.exclude(invoice_number="")
+                .order_by("-date_created")
+                .first()
             )
             next_num = 1
             if last and last.invoice_number:
@@ -426,7 +511,7 @@ class InvoiceLineItem(models.Model):
         return self.description
 
 
-class Payment(models.Model):
+class Payment(AuditFieldsMixin):
     class Method(models.TextChoices):
         CASH = "cash", "Cash"
         ETRANSFER = "etransfer", "E-Transfer"
@@ -435,12 +520,19 @@ class Payment(models.Model):
         OTHER = "other", "Other"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    receipt_number = models.CharField(
+        max_length=20,
+        unique=True,
+        blank=True,
+        help_text="Auto-generated receipt number.",
+    )
     invoice = models.ForeignKey(
         Invoice,
         on_delete=models.CASCADE,
         related_name="payments",
-        null=True,
-        blank=True,
+    )
+    date = models.DateField(
+        help_text="Date the payment was received.",
     )
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     method = models.CharField(
@@ -456,12 +548,200 @@ class Payment(models.Model):
         help_text="Transaction ID, cheque number, etc.",
     )
     notes = models.TextField(blank=True, default="")
-    received_at = models.DateTimeField(default=timezone.now)
-    created = models.DateTimeField(auto_now_add=True)
+
+    history = HistoricalRecords()
 
     class Meta:
-        ordering = ["-received_at"]
+        ordering = ["-date"]
 
     def __str__(self) -> str:
-        inv = self.invoice.invoice_number if self.invoice else "—"
-        return f"${self.amount} ({self.get_method_display()}) — {inv}"
+        return (
+            f"{self.receipt_number} — ${self.amount} "
+            f"({self.get_method_display()}) — {self.invoice.invoice_number}"
+        )
+
+    def clean(self) -> None:
+        super().clean()
+        if self.date and self.invoice_id:
+            invoice_date = self.invoice.date
+            if invoice_date and self.date < invoice_date:
+                raise ValidationError(
+                    {
+                        "date": (
+                            f"Payment date ({self.date}) cannot be before "
+                            f"the invoice date ({invoice_date})."
+                        )
+                    }
+                )
+
+    def save(self, *args, **kwargs) -> None:
+        if not self.date:
+            self.date = timezone.now().date()
+        if not self.receipt_number:
+            last = (
+                Payment.objects.exclude(receipt_number="")
+                .order_by("-date_created")
+                .first()
+            )
+            next_num = 1
+            if last and last.receipt_number:
+                try:
+                    next_num = int(last.receipt_number.replace("REC-", "")) + 1
+                except ValueError:
+                    next_num = Payment.objects.count() + 1
+            self.receipt_number = f"REC-{next_num:05d}"
+        super().save(*args, **kwargs)
+        # Mark invoice as paid when payment is recorded
+        if self.invoice_id and self.invoice.status != Invoice.Status.PAID:
+            self.invoice.status = Invoice.Status.PAID
+            self.invoice.save(update_fields=["status", "date_modified"])
+
+
+# ---------------------------------------------------------------------------
+# Delivery
+# ---------------------------------------------------------------------------
+
+
+class Delivery(AuditFieldsMixin):
+    """Tracks how and when customer photos were delivered."""
+
+    class Method(models.TextChoices):
+        GOOGLE_DRIVE = "google_drive", "Google Drive"
+        EMAIL = "email", "Email Link"
+        MANUAL = "manual", "Manual"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    delivery_number = models.CharField(
+        max_length=20,
+        unique=True,
+        blank=True,
+        help_text="Auto-generated delivery number.",
+    )
+    order = models.ForeignKey(
+        Order, on_delete=models.CASCADE, related_name="deliveries"
+    )
+    method = models.CharField(
+        max_length=20,
+        choices=Method.choices,
+    )
+    url = models.URLField(
+        max_length=500,
+        blank=True,
+        default="",
+        help_text="Download link (Google Drive URL, token link, etc.).",
+    )
+    notes = models.TextField(blank=True, default="")
+
+    history = HistoricalRecords()
+
+    class Meta:
+        ordering = ["-date_created"]
+        verbose_name_plural = "deliveries"
+
+    def __str__(self) -> str:
+        return (
+            f"{self.delivery_number} — {self.get_method_display()} — {self.order.ref}"
+        )
+
+    def save(self, *args, **kwargs) -> None:
+        if not self.delivery_number:
+            last = (
+                Delivery.objects.exclude(delivery_number="")
+                .order_by("-date_created")
+                .first()
+            )
+            next_num = 1
+            if last and last.delivery_number:
+                try:
+                    next_num = int(last.delivery_number.replace("DEL-", "")) + 1
+                except ValueError:
+                    next_num = Delivery.objects.count() + 1
+            self.delivery_number = f"DEL-{next_num:05d}"
+        super().save(*args, **kwargs)
+        # Auto-update order delivery status after items are added
+        # (called explicitly after bulk_create of DeliveryItems in views)
+
+
+class DeliveryItem(models.Model):
+    """Free-form line item on a delivery note.
+
+    Scaffolded from the order's selections but editable by the
+    photographer (descriptions, quantities, splits).
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    delivery = models.ForeignKey(
+        Delivery, on_delete=models.CASCADE, related_name="items"
+    )
+    sort_order = models.PositiveIntegerField(default=0)
+    description = models.CharField(max_length=300)
+    qty = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        ordering = ["sort_order"]
+
+    def __str__(self) -> str:
+        return f"{self.delivery.delivery_number} — {self.description}"
+
+
+# ---------------------------------------------------------------------------
+# Download tokens
+# ---------------------------------------------------------------------------
+
+
+def _generate_download_token() -> str:
+    return secrets.token_urlsafe(32)
+
+
+class DownloadToken(AuditFieldsMixin):
+    """A unique, time-limited download link sent to a customer's email."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    token = models.CharField(
+        max_length=64,
+        unique=True,
+        default=_generate_download_token,
+        editable=False,
+    )
+    order = models.ForeignKey(
+        Order,
+        on_delete=models.CASCADE,
+        related_name="download_tokens",
+    )
+    customer = models.ForeignKey(
+        Customer,
+        on_delete=models.CASCADE,
+        related_name="download_tokens",
+    )
+    expires_at = models.DateTimeField(
+        help_text="Token expires after this datetime.",
+    )
+    sent_to_email = EncryptedEmailField(
+        blank=True,
+        null=True,
+        default="",
+        help_text="Email address the link was sent to.",
+    )
+    sent_at = models.DateTimeField(null=True, blank=True)
+    download_count = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["-date_created"]
+
+    def __str__(self) -> str:
+        return f"Download token for {self.order.ref} — {self.customer}"
+
+    def save(self, *args, **kwargs) -> None:
+        if not self.expires_at:
+            self.expires_at = timezone.now() + timedelta(
+                days=getattr(settings, "DOWNLOAD_TOKEN_EXPIRY_DAYS", 30)
+            )
+        super().save(*args, **kwargs)
+
+    @property
+    def is_expired(self) -> bool:
+        return timezone.now() > self.expires_at
+
+    @property
+    def is_valid(self) -> bool:
+        return not self.is_expired

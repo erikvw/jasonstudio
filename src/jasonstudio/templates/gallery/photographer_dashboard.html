@@ -6,6 +6,7 @@
     <div class="d-flex gap-2 flex-wrap">
         <a href="{% url 'service_list' %}" class="btn btn-outline-secondary btn-sm">Services</a>
         <a href="{% url 'customer_list' %}" class="btn btn-outline-dark btn-sm">Customers</a>
+        <a href="{% url 'utilities' %}" class="btn btn-outline-info btn-sm"><i class="fa-solid fa-wrench"></i> Utilities</a>
         <a href="{% url 'create_event' %}" class="btn btn-primary btn-sm">New Event</a>
     </div>
 </div>
@@ -30,8 +31,9 @@
             </small>
         </div>
         <div class="d-flex flex-wrap gap-1">
-            <a href="{% url 'event_orders' event.pk %}" class="btn btn-sm btn-outline-success">Quotes & Orders</a>
-            <a href="{% url 'edit_event' event.pk %}" class="btn btn-sm btn-outline-dark">Details</a>
+            <a href="{% url 'edit_event' event.pk %}" class="btn btn-sm btn-outline-dark">Edit Event</a>
+            <a href="{% url 'event_planning_notes' event.pk %}" class="btn btn-sm btn-outline-secondary">Notes</a>
+            <a href="{% url 'event_orders' event.pk %}" class="btn btn-sm btn-outline-success">Quotes &amp; Orders</a>
             <a href="{% url 'upload_photos' event.pk %}" class="btn btn-sm btn-outline-primary">Upload</a>
             <a href="{% url 'event_gallery' event.pk %}" class="btn btn-sm btn-outline-secondary">Gallery</a>
         </div>
@@ -69,8 +71,9 @@
                 </td>
                 <td class="text-end">{{ event.photo_count }}</td>
                 <td class="text-end text-nowrap">
-                    <a href="{% url 'event_orders' event.pk %}" class="btn btn-sm btn-outline-success">Quotes & Orders</a>
-                    <a href="{% url 'edit_event' event.pk %}" class="btn btn-sm btn-outline-dark">Details</a>
+                    <a href="{% url 'edit_event' event.pk %}" class="btn btn-sm btn-outline-dark">Edit Event</a>
+                    <a href="{% url 'event_planning_notes' event.pk %}" class="btn btn-sm btn-outline-secondary">Notes</a>
+                    <a href="{% url 'event_orders' event.pk %}" class="btn btn-sm btn-outline-success">Quotes &amp; Orders</a>
                     <a href="{% url 'upload_photos' event.pk %}" class="btn btn-sm btn-outline-primary">Upload</a>
                     <a href="{% url 'event_gallery' event.pk %}" class="btn btn-sm btn-outline-secondary">Gallery</a>
                 </td>

@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}{{ delivery.delivery_number }} — Jason Studio{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-end mb-3 flex-wrap gap-2">
+    <a href="{% url 'order_fulfilment' event.pk customer.pk %}" class="btn btn-outline-secondary btn-sm">Back to Fulfilment</a>
+</div>
+
+<h4 class="mb-1">Delivery Note — {{ delivery.delivery_number }}</h4>
+<p class="text-muted mb-4">
+    {{ customer.user.get_full_name|default:customer.user.username }}
+    — {{ event.name }}
+    — Order {{ order.ref }}
+    — {{ delivery.get_method_display }}
+    — {{ delivery.date_created|date:"N j, Y g:i A" }}
+</p>
+
+<form method="post">
+    {% csrf_token %}
+
+    <!-- URL -->
+    <div class="card mb-4">
+        <div class="card-header"><strong>Details</strong></div>
+        <div class="card-body">
+            <div class="mb-3">
+                <label for="url" class="form-label">URL</label>
+                <input type="url" class="form-control" id="url" name="url"
+                       value="{{ delivery.url }}" placeholder="Download link (optional)">
+            </div>
+            <div class="mb-0">
+                <label for="notes" class="form-label">Notes</label>
+                <textarea class="form-control" id="notes" name="notes" rows="3">{{ delivery.notes }}</textarea>
+            </div>
+        </div>
+    </div>
+
+    <!-- Line Items -->
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <strong>Items</strong>
+            <button type="button" class="btn btn-sm btn-outline-primary" id="add-item-btn">
+                <i class="fa-solid fa-plus"></i> Add Item
+            </button>
+        </div>
+        <div class="card-body p-0">
+            <table class="table table-sm mb-0" id="items-table">
+                <thead>
+                    <tr>
+                        <th style="width:60%">Description</th>
+                        <th style="width:20%">Qty</th>
+                        <th style="width:20%"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in items %}
+                    <tr class="item-row">
+                        <td>
+                            <input type="text" class="form-control form-control-sm"
+                                   name="item_{{ forloop.counter0 }}_description"
+                                   value="{{ item.description }}" required>
+                        </td>
+                        <td>
+                            <input type="number" class="form-control form-control-sm"
+                                   name="item_{{ forloop.counter0 }}_qty"
+                                   value="{{ item.qty }}" min="1">
+                        </td>
+                        <td class="text-end">
+                            <button type="button" class="btn btn-sm btn-outline-danger remove-item-btn">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary">Save</button>
+        <a href="{% url 'order_fulfilment' event.pk customer.pk %}" class="btn btn-outline-secondary">Cancel</a>
+    </div>
+</form>
+
+<form method="post" action="{% url 'delivery_delete' delivery.pk %}" class="mt-4 text-end"
+      onsubmit="return confirm('Delete delivery {{ delivery.delivery_number }}? This cannot be undone.');">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-outline-danger">
+        <i class="fa-solid fa-trash"></i> Delete Delivery
+    </button>
+</form>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const tbody = document.querySelector('#items-table tbody');
+    const addBtn = document.getElementById('add-item-btn');
+
+    function getNextIndex() {
+        return tbody.querySelectorAll('.item-row').length;
+    }
+
+    addBtn.addEventListener('click', function() {
+        const idx = getNextIndex();
+        const row = document.createElement('tr');
+        row.className = 'item-row';
+        row.innerHTML = `
+            <td><input type="text" class="form-control form-control-sm" name="item_${idx}_description" required></td>
+            <td><input type="number" class="form-control form-control-sm" name="item_${idx}_qty" value="1" min="1"></td>
+            <td class="text-end"><button type="button" class="btn btn-sm btn-outline-danger remove-item-btn"><i class="fa-solid fa-trash"></i></button></td>
+        `;
+        tbody.appendChild(row);
+    });
+
+    tbody.addEventListener('click', function(e) {
+        const btn = e.target.closest('.remove-item-btn');
+        if (btn) {
+            btn.closest('.item-row').remove();
+            // Re-index names
+            tbody.querySelectorAll('.item-row').forEach(function(row, i) {
+                row.querySelectorAll('input').forEach(function(input) {
+                    const field = input.name.split('_').pop();
+                    input.name = `item_${i}_${field}`;
+                });
+            });
+        }
+    });
+});
+</script>
+{% endblock %}

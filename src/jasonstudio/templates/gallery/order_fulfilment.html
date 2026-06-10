@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+{% block title %}Fulfilment — {{ order.ref }} — Jason Studio{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-end mb-3 flex-wrap gap-2">
+    <a href="{% url 'event_orders' event.pk %}" class="btn btn-outline-secondary btn-sm">Back to Quotes &amp; Orders</a>
+</div>
+
+<h4 class="mb-1">Fulfilment</h4>
+<p class="text-muted mb-4">
+    {{ customer.user.get_full_name|default:customer.user.username }}
+    — {{ event.name }}
+    — Order {{ order.ref }}
+</p>
+
+<!-- Payment -->
+<div class="card mb-4">
+    <div class="card-header"><strong><i class="fa-solid fa-credit-card"></i> Payment</strong></div>
+    <div class="card-body">
+        {% if order.is_paid %}
+        <div class="d-flex flex-wrap gap-2 align-items-center">
+            <span class="badge bg-success fs-6">Paid</span>
+            {% if order.paid_at %}
+            <span class="text-muted">on {{ order.paid_at|date:"N j, Y" }}</span>
+            {% endif %}
+            <a href="{% url 'payment_receipt' event.pk customer.pk %}"
+               class="btn btn-sm btn-outline-success ms-auto"><i class="fa-solid fa-receipt"></i> View Receipt</a>
+        </div>
+        {% else %}
+        <div class="d-flex flex-wrap gap-2 align-items-center">
+            <span class="badge bg-warning text-dark fs-6">Unpaid</span>
+            <a href="{% url 'record_payment' event.pk customer.pk %}"
+               class="btn btn-sm btn-success ms-auto"><i class="fa-solid fa-credit-card"></i> Record Payment</a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Deliveries -->
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <strong><i class="fa-solid fa-truck"></i> Deliveries</strong>
+        {% if order.is_paid %}
+        <div class="d-flex gap-2">
+            {% if drive_configured %}
+            <form method="post" action="{% url 'upload_to_google_drive' event.pk customer.pk %}">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-outline-success">
+                    <i class="fa-brands fa-google-drive"></i> Upload Originals
+                </button>
+            </form>
+            <a href="{% url 'select_files_for_drive' event.pk customer.pk %}" class="btn btn-sm btn-outline-success">
+                <i class="fa-brands fa-google-drive"></i> Upload Selected
+            </a>
+            {% endif %}
+            <a href="{% url 'delivery_create' event.pk customer.pk %}" class="btn btn-sm btn-outline-primary">
+                <i class="fa-solid fa-plus"></i> New Delivery
+            </a>
+        </div>
+        {% endif %}
+    </div>
+    {% if deliveries.count > 0 %}
+    <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+            <thead>
+                <tr>
+                    <th>Delivery #</th>
+                    <th>Method</th>
+                    <th>Items</th>
+                    <th>URL</th>
+                    <th>Date</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for d in deliveries %}
+                <tr>
+                    <td>
+                        <a href="{% url 'delivery_detail' d.pk %}">{{ d.delivery_number }}</a>
+                    </td>
+                    <td>{{ d.get_method_display }}</td>
+                    <td>
+                        {% for item in d.items.all %}
+                        <span class="small">{{ item.description }}{% if not forloop.last %},{% endif %}</span>
+                        {% empty %}
+                        <span class="text-muted">—</span>
+                        {% endfor %}
+                    </td>
+                    <td>
+                        {% if d.url %}
+                        <a href="{{ d.url }}" target="_blank" rel="noopener" class="text-break small">{{ d.url|truncatechars:40 }}</a>
+                        {% else %}
+                        <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-nowrap">{{ d.date_created|date:"N j, Y" }}</td>
+                    <td>
+                        {% if d.mailto_url %}
+                        <a href="{{ d.mailto_url }}"
+                           class="btn btn-sm btn-outline-secondary" title="Email link to customer">
+                            <i class="fa-solid fa-envelope"></i>
+                        </a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="card-footer">
+        <div class="d-flex flex-wrap gap-2 align-items-center">
+            <span class="text-muted">{{ deliveries.count }} deliver{{ deliveries.count|pluralize:"y,ies" }} recorded</span>
+            <div class="ms-auto">
+                {% if order.status == "delivered" %}
+                <form method="post" action="{% url 'reopen_order_delivery' event.pk customer.pk %}">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm btn-outline-secondary">Reopen</button>
+                </form>
+                {% else %}
+                <form method="post" action="{% url 'mark_order_delivered' event.pk customer.pk %}">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm btn-success">
+                        <i class="fa-solid fa-check"></i> Mark Fully Delivered
+                    </button>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="card-body">
+        <span class="text-muted">No deliveries recorded yet</span>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Photographer Downloads -->
+<div class="card mb-4">
+    <div class="card-header"><strong><i class="fa-solid fa-camera"></i> Photographer Downloads</strong></div>
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div>
+                <strong>All event photos</strong>
+                <br><small class="text-muted">Zip of all {{ event.photo_count }} original photo{{ event.photo_count|pluralize }} from this event (not customer-specific)</small>
+            </div>
+            <a href="{% url 'download_event_photos' event.pk %}" class="btn btn-outline-dark btn-sm">
+                <i class="fa-solid fa-download"></i> Download All ({{ event.photo_count }})
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Share Link -->
+{% if order.share_link %}
+<div class="card mb-4">
+    <div class="card-header"><strong>Share Link</strong></div>
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div>
+                <span class="font-monospace fs-5">{{ order.share_link.code }}</span>
+                {% if order.share_link.is_active %}
+                <span class="badge bg-success ms-2">Active</span>
+                {% else %}
+                <span class="badge bg-secondary ms-2">Deactivated</span>
+                {% endif %}
+                <span class="text-muted ms-3">Downloads: {{ order.share_link.download_count }}</span>
+            </div>
+            {% if order.share_link.is_active %}
+            <form method="post" action="{% url 'deactivate_share_link' event.pk %}">
+                {% csrf_token %}
+                <input type="hidden" name="customer_id" value="{{ customer.pk }}">
+                <button type="submit" class="btn btn-sm btn-outline-danger">Deactivate</button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}

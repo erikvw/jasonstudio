@@ -33,6 +33,11 @@ class Event(models.Model):
     date = models.DateField()
     location = models.CharField(max_length=300, blank=True, default="")
     description = models.TextField(blank=True, default="")
+    planning_notes = models.TextField(
+        blank=True,
+        default="",
+        help_text="Internal planning notes — not visible to customers.",
+    )
     status = models.CharField(
         max_length=20, choices=Status.choices, default=Status.DRAFT
     )
@@ -152,6 +157,10 @@ class Service(models.Model):
     default_rate = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     unit_type = models.CharField(
         max_length=20, choices=UnitType.choices, default=UnitType.PER_HOUR
+    )
+    is_default = models.BooleanField(
+        default=False,
+        help_text="Automatically add this service to new quotations.",
     )
     is_active = models.BooleanField(default=True)
     sort_order = models.PositiveIntegerField(default=0)
