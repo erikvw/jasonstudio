@@ -68,23 +68,41 @@ def home(request: HttpRequest) -> HttpResponse:
 
 @login_required
 def event_gallery(request: HttpRequest, event_id: str) -> HttpResponse:
-    customer = _get_customer(request.user)
+    from jasonstudio.accounts.models import Customer as CustomerModel
+
+    own_customer = _get_customer(request.user)
     is_photographer = _is_photographer(request.user)
 
     if is_photographer:
         event = get_object_or_404(Event, pk=event_id)
-    elif customer:
+    elif own_customer:
         event = get_object_or_404(
-            Event, pk=event_id, customers=customer, status="published"
+            Event, pk=event_id, customers=own_customer, status="published"
         )
     else:
         return redirect("home")
 
+    # Perspective switcher: photographer can view as a specific customer
+    view_as_customer = None
+    event_customers: list[CustomerModel] = []
+    if is_photographer:
+        event_customers = list(event.customers.all())
+        view_as_id = request.GET.get("view_as", "")
+        if view_as_id:
+            view_as_customer = CustomerModel.objects.filter(
+                pk=view_as_id, events=event
+            ).first()
+
+    # The "active customer" for loading selections
+    active_customer = view_as_customer if is_photographer else own_customer
+
     all_photos = event.photos.all()
     selections = {}
     print_sizes_map = {}
-    if customer:
-        for sel in Selection.objects.filter(customer=customer, photo__event=event):
+    if active_customer:
+        for sel in Selection.objects.filter(
+            customer=active_customer, photo__event=event
+        ):
             selections[str(sel.photo_id)] = sel.choice
             print_sizes_map[str(sel.photo_id)] = sel.print_size
 
@@ -94,7 +112,7 @@ def event_gallery(request: HttpRequest, event_id: str) -> HttpResponse:
     if filter_by not in valid_filters:
         filter_by = ""
 
-    if filter_by and customer:
+    if filter_by and active_customer:
         if filter_by == "undecided":
             decided_ids = set(selections.keys())
             photos = [p for p in all_photos if str(p.pk) not in decided_ids]
@@ -105,7 +123,7 @@ def event_gallery(request: HttpRequest, event_id: str) -> HttpResponse:
 
     # Counts for filter tabs
     filter_counts = {"digital": 0, "both": 0, "reject": 0, "undecided": 0}
-    if customer:
+    if active_customer:
         decided_ids = set(selections.keys())
         for choice in selections.values():
             if choice in filter_counts:
@@ -124,7 +142,10 @@ def event_gallery(request: HttpRequest, event_id: str) -> HttpResponse:
             "print_sizes_map": print_sizes_map,
             "print_sizes": Selection.PrintSize.choices,
             "is_photographer": is_photographer,
-            "is_customer": customer is not None,
+            "is_customer": own_customer is not None,
+            "active_customer": active_customer,
+            "view_as_customer": view_as_customer,
+            "event_customers": event_customers,
             "current_filter": filter_by,
             "filter_counts": filter_counts,
             "total_count": len(all_photos)
@@ -132,6 +153,74 @@ def event_gallery(request: HttpRequest, event_id: str) -> HttpResponse:
             else all_photos.count(),
         },
     )
+
+
+@login_required
+@require_POST
+def select_all_digital(request: HttpRequest, event_id: str) -> HttpResponse:
+    """Mark all event photos as 'Digital' for a specific customer or all."""
+    from django.contrib import messages
+
+    from jasonstudio.accounts.models import Customer
+
+    if not _is_photographer(request.user):
+        return redirect("home")
+
+    event = get_object_or_404(Event, pk=event_id)
+    photos = list(event.photos.all())
+
+    if not photos:
+        messages.warning(request, "No photos in this event.")
+        return redirect("event_gallery", event_id=event.pk)
+
+    # If acting on behalf of a specific customer
+    view_as_id = request.POST.get("view_as", "")
+    if view_as_id:
+        target_customer = Customer.objects.filter(pk=view_as_id, events=event).first()
+        if not target_customer:
+            messages.error(request, "Customer not found.")
+            return redirect("event_gallery", event_id=event.pk)
+        target_customers = [target_customer]
+    else:
+        target_customers = list(Customer.objects.filter(orders__event=event).distinct())
+
+    if not target_customers:
+        messages.warning(
+            request,
+            "No customers with orders for this event. Create an order first.",
+        )
+        return redirect("event_gallery", event_id=event.pk)
+
+    created_count = 0
+    for customer in target_customers:
+        selections_to_create = [
+            Selection(
+                photo=photo,
+                customer=customer,
+                choice=Selection.Choice.DIGITAL,
+            )
+            for photo in photos
+        ]
+        objs = Selection.objects.bulk_create(
+            selections_to_create, ignore_conflicts=True
+        )
+        created_count += len(objs)
+
+    customer_names = ", ".join(
+        c.user.get_full_name() or c.user.username for c in target_customers
+    )
+    messages.success(
+        request,
+        f"Marked {len(photos)} photos as Digital "
+        f"for {customer_names}. "
+        f"{created_count} new selection(s) created.",
+    )
+    from django.urls import reverse
+
+    url = reverse("event_gallery", kwargs={"event_id": event.pk})
+    if view_as_id:
+        url += f"?view_as={view_as_id}"
+    return redirect(url)
 
 
 @login_required
@@ -354,7 +443,16 @@ def delete_photo(request: HttpRequest, photo_id: str) -> HttpResponse:
 @login_required
 @require_POST
 def toggle_selection(request: HttpRequest, photo_id: str) -> HttpResponse:
+    from jasonstudio.accounts.models import Customer as CustomerModel
+
     customer = _get_customer(request.user)
+
+    # Photographer acting on behalf of a customer
+    if not customer and _is_photographer(request.user):
+        on_behalf_of = request.POST.get("on_behalf_of", "")
+        if on_behalf_of:
+            customer = CustomerModel.objects.filter(pk=on_behalf_of).first()
+
     if not customer:
         return JsonResponse({"error": "Not a customer"}, status=403)
 
@@ -394,6 +492,12 @@ def toggle_selection(request: HttpRequest, photo_id: str) -> HttpResponse:
     if request.htmx:
         from django.template.loader import render_to_string
 
+        # Pass view_as_customer back for photographer acting on behalf
+        on_behalf_of = request.POST.get("on_behalf_of", "")
+        view_as_customer = None
+        if on_behalf_of:
+            view_as_customer = CustomerModel.objects.filter(pk=on_behalf_of).first()
+
         # Render selection buttons
         buttons_html = render_to_string(
             "gallery/partials/selection_buttons.html",
@@ -402,6 +506,7 @@ def toggle_selection(request: HttpRequest, photo_id: str) -> HttpResponse:
                 "current_choice": current_choice,
                 "current_print_size": current_print_size,
                 "print_sizes": Selection.PrintSize.choices,
+                "view_as_customer": view_as_customer,
             },
             request=request,
         )
@@ -448,7 +553,17 @@ def toggle_selection(request: HttpRequest, photo_id: str) -> HttpResponse:
 def photographer_dashboard(request: HttpRequest) -> HttpResponse:
     if not _is_photographer(request.user):
         return redirect("home")
-    events = Event.objects.prefetch_related("customers__user").all()
+    events = list(Event.objects.prefetch_related("customers__user").all())
+
+    # Annotate each event with order summary for badge display
+    for event in events:
+        orders = Order.objects.filter(event=event)
+        event.all_paid = orders.exists() and all(o.is_paid for o in orders)
+        event.all_delivered = orders.exists() and all(
+            o.status == Order.Status.DELIVERED for o in orders
+        )
+        event.has_orders = orders.exists()
+
     return render(request, "gallery/photographer_dashboard.html", {"events": events})
 
 
@@ -975,6 +1090,8 @@ def delivery_detail(request: HttpRequest, delivery_id: str) -> HttpResponse:
             customer_id=customer.pk,
         )
 
+    from .google_drive import is_drive_configured
+
     return render(
         request,
         "gallery/delivery_detail.html",
@@ -984,6 +1101,7 @@ def delivery_detail(request: HttpRequest, delivery_id: str) -> HttpResponse:
             "order": order,
             "event": event,
             "customer": customer,
+            "drive_configured": is_drive_configured(),
         },
     )
 
@@ -1281,7 +1399,7 @@ def event_planning_notes(request: HttpRequest, event_id: str) -> HttpResponse:
 
     return render(
         request,
-        "gallery/event_planning_notes.html",
+        "gallery/event_notes.html",
         {"event": event},
     )
 
@@ -1358,10 +1476,12 @@ def download_event_photos(request: HttpRequest, event_id: str) -> HttpResponse:
 
 @login_required
 @require_POST
-def upload_to_google_drive(
-    request: HttpRequest, event_id: str, customer_id: str
-) -> HttpResponse:
-    """Photographer uploads a customer's digital delivery zip to Google Drive."""
+def upload_delivery_to_drive(request: HttpRequest, delivery_id: str) -> HttpResponse:
+    """Upload a delivery's customer selections to Google Drive.
+
+    Zips the customer's digital/both selections and uploads to Drive,
+    then updates the delivery note with the Drive URL.
+    """
     import tempfile
     import zipfile
 
@@ -1370,13 +1490,12 @@ def upload_to_google_drive(
     if not _is_photographer(request.user):
         return redirect("home")
 
-    from jasonstudio.accounts.models import Customer as CustomerModel
-
     from .google_drive import is_drive_configured, upload_to_drive
 
-    event = get_object_or_404(Event, pk=event_id)
-    customer = get_object_or_404(CustomerModel, pk=customer_id)
-    order = get_object_or_404(Order, event=event, customer=customer)
+    delivery = get_object_or_404(Delivery, pk=delivery_id)
+    order = delivery.order
+    event = order.event
+    customer = order.customer
 
     if not is_drive_configured():
         messages.error(
@@ -1384,11 +1503,9 @@ def upload_to_google_drive(
             "Google Drive is not configured. "
             "Set GOOGLE_DRIVE_CREDENTIALS_FILE and GOOGLE_DRIVE_FOLDER_ID.",
         )
-        return redirect(
-            "customer_order_detail", event_id=event.pk, customer_id=customer.pk
-        )
+        return redirect("order_fulfilment", event_id=event.pk, customer_id=customer.pk)
 
-    # Build the zip of all digital delivery photos
+    # Build the zip of the customer's digital delivery photos
     selections = list(
         Selection.objects.filter(customer=customer, photo__event=event)
         .exclude(choice="reject")
@@ -1399,7 +1516,11 @@ def upload_to_google_drive(
     print_count = sum(1 for s in selections if s.choice == "both")
 
     if not digital_photos:
-        messages.warning(request, "No photos to upload.")
+        messages.warning(
+            request,
+            "No photos to upload. The customer has not selected any photos "
+            "as digital or print in the gallery.",
+        )
         return redirect("order_fulfilment", event_id=event.pk, customer_id=customer.pk)
 
     zip_filename = f"{event.name}_{customer}_digital.zip"
@@ -1416,17 +1537,193 @@ def upload_to_google_drive(
 
     try:
         drive_url = upload_to_drive(tmp_path, zip_filename)
-        delivery = Delivery.objects.create(
-            order=order,
-            method=Delivery.Method.GOOGLE_DRIVE,
-            url=drive_url,
-            notes=f"Uploaded {zip_filename}",
+        delivery.method = Delivery.Method.GOOGLE_DRIVE
+        delivery.url = drive_url
+        delivery.notes = (
+            f"{delivery.notes}\nUploaded {zip_filename}".strip()
+            if delivery.notes
+            else f"Uploaded {zip_filename}"
         )
-        _scaffold_delivery_items(delivery, digital_count, print_count)
+        delivery.save(update_fields=["method", "url", "notes", "date_modified"])
+
+        # Scaffold items if delivery has none
+        if not delivery.items.exists():
+            _scaffold_delivery_items(delivery, digital_count, print_count)
+
         order.update_delivery_status()
         messages.success(
             request,
             f"Uploaded to Google Drive. Link: {drive_url}",
+        )
+    except Exception as exc:
+        messages.error(request, f"Google Drive upload failed: {exc}")
+    finally:
+        import os
+
+        os.unlink(tmp_path)
+
+    return redirect("order_fulfilment", event_id=event.pk, customer_id=customer.pk)
+
+
+@login_required
+def select_files_for_delivery(request: HttpRequest, delivery_id: str) -> HttpResponse:
+    """File browser for selecting files to upload to Drive for a delivery."""
+    if not _is_photographer(request.user):
+        return redirect("home")
+
+    delivery = get_object_or_404(Delivery, pk=delivery_id)
+    order = delivery.order
+    event = order.event
+    customer = order.customer
+
+    media_root = Path(settings.MEDIA_ROOT)
+    event_folder = media_root / "photos" / str(event.pk)
+    browse_path_str = request.GET.get("path", "")
+    if browse_path_str:
+        browse_path = Path(browse_path_str).resolve()
+    else:
+        browse_path = event_folder.resolve()
+
+    if not browse_path.exists() or not browse_path.is_dir():
+        browse_path = event_folder.resolve()
+
+    folders: list[dict[str, str]] = []
+    files: list[dict[str, object]] = []
+    parent_path = browse_path.parent
+    has_parent = browse_path != browse_path.parent
+
+    image_extensions = {
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".tif",
+        ".tiff",
+        ".raw",
+        ".cr2",
+        ".nef",
+        ".arw",
+        ".dng",
+        ".psd",
+        ".zip",
+    }
+
+    try:
+        for entry in sorted(
+            browse_path.iterdir(), key=lambda e: (not e.is_dir(), e.name)
+        ):
+            if entry.name.startswith("."):
+                continue
+            if entry.is_dir():
+                folders.append({"name": entry.name, "path": str(entry)})
+            elif entry.is_file():
+                suffix = entry.suffix.lower()
+                if suffix in image_extensions:
+                    size_mb = entry.stat().st_size / (1024 * 1024)
+                    files.append(
+                        {
+                            "name": entry.name,
+                            "path": str(entry),
+                            "size": f"{size_mb:.1f} MB",
+                        }
+                    )
+    except PermissionError:
+        from django.contrib import messages
+
+        messages.error(request, f"Permission denied: {browse_path}")
+
+    return render(
+        request,
+        "gallery/select_files_for_delivery.html",
+        {
+            "delivery": delivery,
+            "event": event,
+            "customer": customer,
+            "order": order,
+            "browse_path": str(browse_path),
+            "browse_path_display": browse_path.name or str(browse_path),
+            "parent_path": str(parent_path) if has_parent else "",
+            "event_folder": str(event_folder),
+            "folders": folders,
+            "files": files,
+        },
+    )
+
+
+@require_POST
+@login_required
+def upload_selected_for_delivery(
+    request: HttpRequest, delivery_id: str
+) -> HttpResponse:
+    """Upload photographer-selected files to Google Drive for a delivery."""
+    import tempfile
+    import zipfile
+
+    from django.contrib import messages
+
+    if not _is_photographer(request.user):
+        return redirect("home")
+
+    from .google_drive import is_drive_configured, upload_to_drive
+
+    delivery = get_object_or_404(Delivery, pk=delivery_id)
+    order = delivery.order
+    event = order.event
+    customer = order.customer
+
+    if not is_drive_configured():
+        messages.error(
+            request,
+            "Google Drive is not configured. "
+            "Set GOOGLE_DRIVE_CREDENTIALS_FILE and GOOGLE_DRIVE_FOLDER_ID.",
+        )
+        return redirect("order_fulfilment", event_id=event.pk, customer_id=customer.pk)
+
+    selected_files = request.POST.getlist("selected_files")
+    if not selected_files:
+        messages.warning(request, "No files selected.")
+        return redirect("delivery_detail", delivery_id=delivery.pk)
+
+    valid_paths: list[Path] = []
+    for fp in selected_files:
+        p = Path(fp).resolve()
+        if p.is_file():
+            valid_paths.append(p)
+
+    if not valid_paths:
+        messages.warning(request, "No valid files found.")
+        return redirect("delivery_detail", delivery_id=delivery.pk)
+
+    zip_filename = f"{event.name}_{customer}_selected.zip"
+
+    with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
+        tmp_path = tmp.name
+        with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zf:
+            for p in valid_paths:
+                zf.write(p, p.name)
+
+    try:
+        drive_url = upload_to_drive(tmp_path, zip_filename)
+        delivery.method = Delivery.Method.GOOGLE_DRIVE
+        delivery.url = drive_url
+        delivery.notes = (
+            f"{delivery.notes}\nUploaded {len(valid_paths)} selected file(s)".strip()
+            if delivery.notes
+            else f"Uploaded {len(valid_paths)} selected file(s)"
+        )
+        delivery.save(update_fields=["method", "url", "notes", "date_modified"])
+
+        if not delivery.items.exists():
+            DeliveryItem.objects.create(
+                delivery=delivery,
+                sort_order=0,
+                description=f"Selected files ({len(valid_paths)})",
+                qty=len(valid_paths),
+            )
+
+        order.update_delivery_status()
+        messages.success(
+            request,
+            f"Uploaded {len(valid_paths)} file(s) to Google Drive. Link: {drive_url}",
         )
     except Exception as exc:
         messages.error(request, f"Google Drive upload failed: {exc}")
@@ -2453,3 +2750,171 @@ def backup_database(request: HttpRequest) -> HttpResponse:
         backup_path.unlink(missing_ok=True)
         Path(tmp_dir).rmdir()
         return response
+
+
+# ── Reports ──────────────────────────────────────────────────────────────
+
+
+@login_required
+def report_payments_received(request: HttpRequest) -> HttpResponse:
+    """Payments received in a date range."""
+    from decimal import Decimal
+
+    if not _is_photographer(request.user):
+        return redirect("home")
+
+    today = timezone.now().date()
+    # Default to current month
+    date_from_str = request.GET.get("from", "")
+    date_to_str = request.GET.get("to", "")
+
+    try:
+        date_from = (
+            timezone.datetime.strptime(date_from_str, "%Y-%m-%d").date()
+            if date_from_str
+            else today.replace(day=1)
+        )
+    except ValueError:
+        date_from = today.replace(day=1)
+
+    try:
+        date_to = (
+            timezone.datetime.strptime(date_to_str, "%Y-%m-%d").date()
+            if date_to_str
+            else today
+        )
+    except ValueError:
+        date_to = today
+
+    payments = (
+        Payment.objects.filter(date__gte=date_from, date__lte=date_to)
+        .select_related(
+            "invoice__order__customer__user",
+            "invoice__order__event",
+        )
+        .order_by("-date")
+    )
+
+    total = sum((p.amount for p in payments), Decimal("0.00"))
+
+    # Group by method
+    by_method: dict[str, Decimal] = {}
+    for p in payments:
+        label = p.get_method_display()
+        by_method[label] = by_method.get(label, Decimal("0.00")) + p.amount
+
+    return render(
+        request,
+        "gallery/reports/payments_received.html",
+        {
+            "payments": payments,
+            "total": total,
+            "by_method": by_method,
+            "date_from": date_from,
+            "date_to": date_to,
+        },
+    )
+
+
+@login_required
+def report_outstanding_invoices(request: HttpRequest) -> HttpResponse:
+    """Invoices that are not yet paid or void."""
+    from decimal import Decimal
+
+    if not _is_photographer(request.user):
+        return redirect("home")
+
+    today = timezone.now().date()
+
+    invoices = (
+        Invoice.objects.filter(status__in=[Invoice.Status.DRAFT, Invoice.Status.ISSUED])
+        .select_related(
+            "order__customer__user",
+            "order__event",
+        )
+        .order_by("date")
+    )
+
+    # Annotate with age
+    invoice_rows = []
+    for inv in invoices:
+        age_days = (today - inv.date).days if inv.date else 0
+        invoice_rows.append(
+            {
+                "invoice": inv,
+                "customer": inv.order.customer,
+                "event": inv.order.event,
+                "order": inv.order,
+                "age_days": age_days,
+            }
+        )
+
+    total_outstanding = sum((inv.amount_due for inv in invoices), Decimal("0.00"))
+
+    return render(
+        request,
+        "gallery/reports/outstanding_invoices.html",
+        {
+            "invoice_rows": invoice_rows,
+            "total_outstanding": total_outstanding,
+        },
+    )
+
+
+@login_required
+def report_revenue_summary(request: HttpRequest) -> HttpResponse:
+    """Revenue summary grouped by month."""
+    from collections import OrderedDict
+    from decimal import Decimal
+
+    if not _is_photographer(request.user):
+        return redirect("home")
+
+    today = timezone.now().date()
+    year = request.GET.get("year", "")
+    try:
+        year = int(year)
+    except (ValueError, TypeError):
+        year = today.year
+
+    payments = (
+        Payment.objects.filter(date__year=year)
+        .select_related("invoice__order__event")
+        .order_by("date")
+    )
+
+    # Group by month
+    monthly: OrderedDict[str, dict] = OrderedDict()
+    for month_num in range(1, 13):
+        month_label = timezone.datetime(year, month_num, 1).strftime("%B")
+        monthly[month_label] = {
+            "count": 0,
+            "total": Decimal("0.00"),
+        }
+
+    grand_total = Decimal("0.00")
+    total_count = 0
+    for p in payments:
+        month_label = p.date.strftime("%B")
+        monthly[month_label]["count"] += 1
+        monthly[month_label]["total"] += p.amount
+        grand_total += p.amount
+        total_count += 1
+
+    # Available years for the switcher
+    all_years = Payment.objects.dates("date", "year", order="DESC")
+    available_years = [d.year for d in all_years]
+    if year not in available_years:
+        available_years.insert(0, year)
+
+    return render(
+        request,
+        "gallery/reports/revenue_summary.html",
+        {
+            "monthly": monthly,
+            "grand_total": grand_total,
+            "total_count": total_count,
+            "year": year,
+            "available_years": available_years,
+        },
+    )

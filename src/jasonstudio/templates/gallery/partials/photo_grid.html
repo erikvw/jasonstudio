@@ -46,8 +46,19 @@
             <small class="text-muted">Taken {{ photo.date_taken|date:"N j, Y g:i A" }}</small>
             {% endif %}
         </div>
-        {% if not is_photographer %}
+        {% if not is_photographer or view_as_customer %}
         {% include "gallery/partials/selection_buttons.html" with photo=photo current_choice=selections|dict_get:photo.pk current_print_size=print_sizes_map|dict_get:photo.pk print_sizes=print_sizes %}
+        {% elif is_photographer and selections %}
+        {% with choice=selections|dict_get:photo.pk %}
+        {% if choice %}
+        <div class="card-footer p-1 text-end">
+            {% if choice == 'digital' %}<span class="badge bg-info">D</span>
+            {% elif choice == 'both' %}<span class="badge bg-success">P+D</span>
+            {% elif choice == 'reject' %}<span class="badge bg-danger">R</span>
+            {% endif %}
+        </div>
+        {% endif %}
+        {% endwith %}
         {% endif %}
     </div>
 </div>

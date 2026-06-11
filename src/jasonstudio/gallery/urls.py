@@ -9,6 +9,11 @@ urlpatterns = [
     path("event/<str:event_id>/edit/", views.manage_event, name="edit_event"),
     path("event/<str:event_id>/", views.event_gallery, name="event_gallery"),
     path("event/<str:event_id>/upload/", views.upload_photos, name="upload_photos"),
+    path(
+        "event/<str:event_id>/select-all-digital/",
+        views.select_all_digital,
+        name="select_all_digital",
+    ),
     path("event/<str:event_id>/orders/", views.event_orders, name="event_orders"),
     path(
         "event/<str:event_id>/invoice/<str:customer_id>/",
@@ -76,19 +81,19 @@ urlpatterns = [
         name="download_event_photos",
     ),
     path(
-        "event/<str:event_id>/orders/<str:customer_id>/upload-to-drive/",
-        views.upload_to_google_drive,
-        name="upload_to_google_drive",
+        "delivery/<str:delivery_id>/upload-to-drive/",
+        views.upload_delivery_to_drive,
+        name="upload_delivery_to_drive",
     ),
     path(
-        "event/<str:event_id>/orders/<str:customer_id>/select-files-for-drive/",
-        views.select_files_for_drive,
-        name="select_files_for_drive",
+        "delivery/<str:delivery_id>/select-files-for-drive/",
+        views.select_files_for_delivery,
+        name="select_files_for_delivery",
     ),
     path(
-        "event/<str:event_id>/orders/<str:customer_id>/upload-selected-to-drive/",
-        views.upload_selected_to_google_drive,
-        name="upload_selected_to_google_drive",
+        "delivery/<str:delivery_id>/upload-selected-to-drive/",
+        views.upload_selected_for_delivery,
+        name="upload_selected_for_delivery",
     ),
     path(
         "event/<str:event_id>/regenerate-thumbnails/",
@@ -170,6 +175,22 @@ urlpatterns = [
         "my-quotes/<str:event_id>/decline/",
         views.customer_quotation_decline,
         name="customer_quotation_decline",
+    ),
+    # Reports
+    path(
+        "photographer/reports/payments/",
+        views.report_payments_received,
+        name="report_payments_received",
+    ),
+    path(
+        "photographer/reports/outstanding/",
+        views.report_outstanding_invoices,
+        name="report_outstanding_invoices",
+    ),
+    path(
+        "photographer/reports/revenue/",
+        views.report_revenue_summary,
+        name="report_revenue_summary",
     ),
     # Utilities
     path("photographer/utilities/", views.utilities, name="utilities"),

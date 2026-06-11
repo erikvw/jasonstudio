@@ -8,15 +8,43 @@
     </div>
     {% if is_photographer %}
     <div class="d-flex gap-2 flex-wrap">
-        <a href="{% url 'event_orders' event.pk %}" class="btn btn-outline-success btn-sm">Orders</a>
-        <a href="{% url 'upload_photos' event.pk %}" class="btn btn-primary btn-sm">Upload</a>
+        <a href="{% url 'event_orders' event.pk %}" class="btn btn-outline-success btn-sm">Order Management</a>
+        <a href="{% url 'upload_photos' event.pk %}" class="btn btn-primary btn-sm">Upload Photos</a>
+        {% if view_as_customer %}
+        <form method="post" action="{% url 'select_all_digital' event.pk %}" class="d-inline"
+              onsubmit="return confirm('Mark all {{ total_count }} photos as Digital for {{ view_as_customer.user.get_full_name }}?');">
+            {% csrf_token %}
+            <input type="hidden" name="view_as" value="{{ view_as_customer.pk }}">
+            <button type="submit" class="btn btn-outline-warning btn-sm">Select All as Digital</button>
+        </form>
+        {% endif %}
     </div>
     {% endif %}
 </div>
+
+{% if is_photographer and event_customers %}
+<!-- Perspective switcher -->
+<div class="mb-3">
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+        <span class="text-muted small">Viewing as:</span>
+        <a href="{% url 'event_gallery' event.pk %}"
+           class="btn btn-sm {% if not view_as_customer %}btn-dark{% else %}btn-outline-dark{% endif %}">
+            Photographer
+        </a>
+        {% for c in event_customers %}
+        <a href="{% url 'event_gallery' event.pk %}?view_as={{ c.pk }}"
+           class="btn btn-sm {% if view_as_customer and view_as_customer.pk == c.pk %}btn-dark{% else %}btn-outline-dark{% endif %}">
+            {{ c.user.get_full_name|default:c.user.username }}
+        </a>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
 {% if event.description %}
 <p>{{ event.description }}</p>
 {% endif %}
-{% if is_customer %}
+{% if is_customer or view_as_customer %}
 {% include "gallery/partials/selection_summary.html" %}
 {% include "gallery/partials/filter_tabs.html" %}
 {% endif %}

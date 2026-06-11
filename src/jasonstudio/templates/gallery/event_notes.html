@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Event Notes — {{ event.name }} — Jason Studio{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+    <h2 class="mb-0">Event Notes</h2>
+    <a href="{% url 'photographer_dashboard' %}" class="btn btn-outline-secondary btn-sm">Back to Dashboard</a>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header">
+        <strong>Event Details</strong>
+    </div>
+    <div class="card-body">
+        <p class="mb-1"><strong>Event:</strong> {{ event.name }}</p>
+        <p class="mb-1"><strong>Date:</strong> {{ event.date|date:"N j, Y" }}</p>
+        <p class="mb-1"><strong>Location:</strong> {{ event.location|default:"—" }}</p>
+        <p class="mb-0"><strong>Customers:</strong>
+            {% for c in event.customers.all %}{{ c.user.get_full_name|default:c.user.username }}{% if not forloop.last %}, {% endif %}{% empty %}<span class="text-muted">No customers linked</span>{% endfor %}
+        </p>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <strong>Notes</strong>
+        <small class="text-muted">— not visible to customers</small>
+    </div>
+    <div class="card-body">
+        <form method="post">
+            {% csrf_token %}
+            <textarea name="planning_notes" rows="10" class="form-control mb-3"
+                      placeholder="Equipment, schedule, location details, special arrangements, shot list…">{{ event.planning_notes }}</textarea>
+            <button type="submit" class="btn btn-primary">Save</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

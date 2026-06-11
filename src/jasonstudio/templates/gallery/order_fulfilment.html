@@ -1,16 +1,23 @@
 {% extends "base.html" %}
 {% block title %}Fulfilment — {{ order.ref }} — Jason Studio{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-end mb-3 flex-wrap gap-2">
-    <a href="{% url 'event_orders' event.pk %}" class="btn btn-outline-secondary btn-sm">Back to Quotes &amp; Orders</a>
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+    <h2 class="mb-0">Fulfilment</h2>
+    <a href="{% url 'event_orders' event.pk %}" class="btn btn-outline-secondary btn-sm">Back to Order Management</a>
 </div>
 
-<h4 class="mb-1">Fulfilment</h4>
-<p class="text-muted mb-4">
-    {{ customer.user.get_full_name|default:customer.user.username }}
-    — {{ event.name }}
-    — Order {{ order.ref }}
-</p>
+<div class="card mb-4">
+    <div class="card-header">
+        <strong>Event Details</strong>
+    </div>
+    <div class="card-body">
+        <p class="mb-1"><strong>Event:</strong> {{ event.name }}</p>
+        <p class="mb-1"><strong>Date:</strong> {{ event.date|date:"N j, Y" }}</p>
+        <p class="mb-1"><strong>Location:</strong> {{ event.location|default:"—" }}</p>
+        <p class="mb-1"><strong>Customer:</strong> {{ customer.user.get_full_name|default:customer.user.username }}</p>
+        <p class="mb-0"><strong>Order:</strong> {{ order.ref }}</p>
+    </div>
+</div>
 
 <!-- Payment -->
 <div class="card mb-4">
@@ -40,22 +47,9 @@
     <div class="card-header d-flex justify-content-between align-items-center">
         <strong><i class="fa-solid fa-truck"></i> Deliveries</strong>
         {% if order.is_paid %}
-        <div class="d-flex gap-2">
-            {% if drive_configured %}
-            <form method="post" action="{% url 'upload_to_google_drive' event.pk customer.pk %}">
-                {% csrf_token %}
-                <button type="submit" class="btn btn-sm btn-outline-success">
-                    <i class="fa-brands fa-google-drive"></i> Upload Originals
-                </button>
-            </form>
-            <a href="{% url 'select_files_for_drive' event.pk customer.pk %}" class="btn btn-sm btn-outline-success">
-                <i class="fa-brands fa-google-drive"></i> Upload Selected
-            </a>
-            {% endif %}
-            <a href="{% url 'delivery_create' event.pk customer.pk %}" class="btn btn-sm btn-outline-primary">
-                <i class="fa-solid fa-plus"></i> New Delivery
-            </a>
-        </div>
+        <a href="{% url 'delivery_create' event.pk customer.pk %}" class="btn btn-sm btn-outline-primary">
+            <i class="fa-solid fa-plus"></i> New Delivery
+        </a>
         {% endif %}
     </div>
     {% if deliveries.count > 0 %}
@@ -93,7 +87,15 @@
                         {% endif %}
                     </td>
                     <td class="text-nowrap">{{ d.date_created|date:"N j, Y" }}</td>
-                    <td>
+                    <td class="text-nowrap">
+                        {% if drive_configured and not d.url %}
+                        <form method="post" action="{% url 'upload_delivery_to_drive' d.pk %}" class="d-inline">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-sm btn-outline-success" title="Upload to Google Drive">
+                                <i class="fa-brands fa-google-drive"></i>
+                            </button>
+                        </form>
+                        {% endif %}
                         {% if d.mailto_url %}
                         <a href="{{ d.mailto_url }}"
                            class="btn btn-sm btn-outline-secondary" title="Email link to customer">
@@ -108,22 +110,27 @@
     </div>
     <div class="card-footer">
         <div class="d-flex flex-wrap gap-2 align-items-center">
+            {% if order.status == "delivered" %}
+            <span class="badge bg-success fs-6">Fully Delivered</span>
             <span class="text-muted">{{ deliveries.count }} deliver{{ deliveries.count|pluralize:"y,ies" }} recorded</span>
             <div class="ms-auto">
-                {% if order.status == "delivered" %}
                 <form method="post" action="{% url 'reopen_order_delivery' event.pk customer.pk %}">
                     {% csrf_token %}
                     <button type="submit" class="btn btn-sm btn-outline-secondary">Reopen</button>
                 </form>
-                {% else %}
+            </div>
+            {% else %}
+            <span class="badge bg-warning text-dark fs-6">Pending Delivery</span>
+            <span class="text-muted">{{ deliveries.count }} deliver{{ deliveries.count|pluralize:"y,ies" }} recorded</span>
+            <div class="ms-auto">
                 <form method="post" action="{% url 'mark_order_delivered' event.pk customer.pk %}">
                     {% csrf_token %}
                     <button type="submit" class="btn btn-sm btn-success">
                         <i class="fa-solid fa-check"></i> Mark Fully Delivered
                     </button>
                 </form>
-                {% endif %}
             </div>
+            {% endif %}
         </div>
     </div>
     {% else %}
