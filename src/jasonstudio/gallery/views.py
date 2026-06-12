@@ -2874,7 +2874,7 @@ def report_revenue_summary(request: HttpRequest) -> HttpResponse:
     year = request.GET.get("year", "")
     try:
         year = int(year)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         year = today.year
 
     payments = (
