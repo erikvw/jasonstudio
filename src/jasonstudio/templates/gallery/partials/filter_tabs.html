@@ -1,22 +1,22 @@
 <ul class="nav nav-pills mb-3 flex-nowrap overflow-auto pb-1" id="filter-tabs" style="-webkit-overflow-scrolling:touch;">
     <li class="nav-item flex-shrink-0">
         <a class="nav-link text-nowrap py-1 px-2 {% if not current_filter %}active{% endif %}"
-           href="{% url 'event_gallery' event.pk %}">All <span class="badge bg-secondary">{{ total_count }}</span></a>
+           href="{% url 'event_gallery' event.pk %}{% if view_as_customer %}?view_as={{ view_as_customer.pk }}{% endif %}">All <span class="badge bg-secondary">{{ total_count }}</span></a>
     </li>
     <li class="nav-item flex-shrink-0">
         <a class="nav-link text-nowrap py-1 px-2 {% if current_filter == 'digital' %}active{% endif %}"
-           href="{% url 'event_gallery' event.pk %}?filter=digital">Digital <span class="badge bg-info">{{ filter_counts.digital }}</span></a>
+           href="{% url 'event_gallery' event.pk %}?filter=digital{% if view_as_customer %}&view_as={{ view_as_customer.pk }}{% endif %}">Digital <span class="badge bg-info">{{ filter_counts.digital }}</span></a>
     </li>
     <li class="nav-item flex-shrink-0">
         <a class="nav-link text-nowrap py-1 px-2 {% if current_filter == 'both' %}active{% endif %}"
-           href="{% url 'event_gallery' event.pk %}?filter=both">Print & Digital <span class="badge bg-success">{{ filter_counts.both }}</span></a>
+           href="{% url 'event_gallery' event.pk %}?filter=both{% if view_as_customer %}&view_as={{ view_as_customer.pk }}{% endif %}">Print & Digital <span class="badge bg-success">{{ filter_counts.both }}</span></a>
     </li>
     <li class="nav-item flex-shrink-0">
         <a class="nav-link text-nowrap py-1 px-2 {% if current_filter == 'reject' %}active{% endif %}"
-           href="{% url 'event_gallery' event.pk %}?filter=reject">Rejected <span class="badge bg-danger">{{ filter_counts.reject }}</span></a>
+           href="{% url 'event_gallery' event.pk %}?filter=reject{% if view_as_customer %}&view_as={{ view_as_customer.pk }}{% endif %}">Rejected <span class="badge bg-danger">{{ filter_counts.reject }}</span></a>
     </li>
     <li class="nav-item flex-shrink-0">
         <a class="nav-link text-nowrap py-1 px-2 {% if current_filter == 'undecided' %}active{% endif %}"
-           href="{% url 'event_gallery' event.pk %}?filter=undecided">Undecided <span class="badge bg-secondary">{{ filter_counts.undecided }}</span></a>
+           href="{% url 'event_gallery' event.pk %}?filter=undecided{% if view_as_customer %}&view_as={{ view_as_customer.pk }}{% endif %}">Undecided <span class="badge bg-secondary">{{ filter_counts.undecided }}</span></a>
     </li>
 </ul>

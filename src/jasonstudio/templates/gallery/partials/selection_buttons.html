@@ -1,15 +1,18 @@
 <div class="card-footer selection-bar p-2">
+    {% if view_as_customer %}
+    <input type="hidden" name="on_behalf_of" value="{{ view_as_customer.pk }}">
+    {% endif %}
     <div class="d-flex gap-1 justify-content-center">
         <button class="btn btn-sm {% if current_choice == 'digital' %}btn-info{% else %}btn-outline-secondary{% endif %}"
                 hx-post="{% url 'toggle_selection' photo.pk %}"
-                hx-vals='{"choice": "digital"}'
+                hx-vals='{"choice": "digital"{% if view_as_customer %}, "on_behalf_of": "{{ view_as_customer.pk }}"{% endif %}}'
                 hx-target="closest .selection-bar"
                 hx-swap="outerHTML">
             Digital
         </button>
         <button class="btn btn-sm {% if current_choice == 'both' %}btn-success{% else %}btn-outline-secondary{% endif %}"
                 hx-post="{% url 'toggle_selection' photo.pk %}"
-                hx-vals='{"choice": "both"}'
+                hx-vals='{"choice": "both"{% if view_as_customer %}, "on_behalf_of": "{{ view_as_customer.pk }}"{% endif %}}'
                 hx-target="closest .selection-bar"
                 hx-swap="outerHTML"
                 hx-include="closest .selection-bar"
@@ -18,7 +21,7 @@
         </button>
         <button class="btn btn-sm {% if current_choice == 'reject' %}btn-danger{% else %}btn-outline-secondary{% endif %}"
                 hx-post="{% url 'toggle_selection' photo.pk %}"
-                hx-vals='{"choice": "reject"}'
+                hx-vals='{"choice": "reject"{% if view_as_customer %}, "on_behalf_of": "{{ view_as_customer.pk }}"{% endif %}}'
                 hx-target="closest .selection-bar"
                 hx-swap="outerHTML">
             Reject

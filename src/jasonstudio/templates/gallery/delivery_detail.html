@@ -81,6 +81,33 @@
     </div>
 </form>
 
+{% if drive_configured %}
+<div class="card mb-4 mt-4">
+    <div class="card-header"><strong><i class="fa-brands fa-google-drive"></i> Google Drive</strong></div>
+    <div class="card-body">
+        {% if delivery.url %}
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+            <span class="badge bg-success">Uploaded</span>
+            <a href="{{ delivery.url }}" target="_blank" rel="noopener" class="text-break small">{{ delivery.url }}</a>
+        </div>
+        {% else %}
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+            <span class="text-muted">Not yet uploaded.</span>
+            <form method="post" action="{% url 'upload_delivery_to_drive' delivery.pk %}" class="d-inline">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-success">
+                    <i class="fa-brands fa-google-drive"></i> Upload Originals
+                </button>
+            </form>
+            <a href="{% url 'select_files_for_delivery' delivery.pk %}" class="btn btn-sm btn-outline-success">
+                <i class="fa-brands fa-google-drive"></i> Upload Selected
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
 <form method="post" action="{% url 'delivery_delete' delivery.pk %}" class="mt-4 text-end"
       onsubmit="return confirm('Delete delivery {{ delivery.delivery_number }}? This cannot be undone.');">
     {% csrf_token %}
